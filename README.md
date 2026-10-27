@@ -90,22 +90,33 @@ xcodebuild -project MovieJournal.xcodeproj -scheme MovieJournal -configuration D
 
 Key 通过 Security 框架存为 Generic Password，使用应用专属 service 和每个来源独立的 account；明确设置 `kSecAttrSynchronizable = false`，不参与 iCloud 钥匙串同步。Key 不写入 SwiftData、偏好设置、源码或日志。
 
-当前工程使用无 Team 的 `Sign to Run Locally`，因此采用 macOS 默认的文件钥匙串，不启用需要预置描述文件权限的 Data Protection 后端或跨应用访问组。设置状态只检查项目是否存在，不取出密码内容；更换先更新旧项，找不到时才新增，不采用先删除后保存。
+当前工程已配置开发团队 `4DK6SF45V9`。App 和测试目标的 Debug、Release 均使用 **Automatically manage signing + Apple Development**。应用标识为 `io.github.pengde-dede.MovieJournal`。
+
+API Key 继续使用 macOS 默认的文件钥匙串，服务名为 `io.github.pengde-dede.MovieJournal.api-keys`。设置状态只检查项目是否存在，不取出密码内容；更换先更新旧项，找不到时才新增，不采用先删除后保存。
 
 如果每次重新编译后都询问钥匙串权限，常见原因是本地临时签名随构建变化，钥匙串未把新构建识别为同一个已授权身份。钥匙串会根据应用的签名要求跟踪访问权限；这与 TMDB/OMDb Key 本身是否有效是两件事。
 
-需要稳定开发签名时，在 Xcode 中：
+重新配置开发签名时，在 Xcode 中：
 
 1. `Xcode → Settings → Accounts` 添加自己的 Apple ID。
 2. 选择 **MovieJournal target → Signing & Capabilities**，启用 **Automatically manage signing**。
 3. **Team** 选择自己的可用开发团队，使用 **Apple Development** 签名证书，保持 Bundle Identifier 不变。
 4. 如果测试 target 也提示签名问题，选择同一团队。重新构建运行后，旧钥匙串项目可能还需重新授权一次。
 
-本步没有修改 Team、申请证书、关闭沙盒或调整用户钥匙串权限。没有可用团队或证书时仍可保留当前本地签名，发生访问提示时按系统授权流程处理。应用不屏蔽或反复自动重试密码授权；拒绝或取消后会显示错误，允许手动重试。
+第 2 步最初交付时使用本地临时签名，随后按用户要求配置了上述开发团队。证书私钥由本机钥匙串管理，不放入工程或 Git 仓库。应用遇到钥匙串权限拒绝或取消时显示错误，允许手动重试。
 
-“构建时 codesign 访问 Apple Development 私钥”的提示属于签名证书授权；运行时访问“观影记录 · TMDB/OMDb API Key”的提示才是本应用保存的 Key。
+“构建时 codesign 访问 Apple Development 私钥”的提示属于签名证书授权。弹窗所需的是“登录”钥匙串密码，通常与 Mac 用户登录密码一致；直接在系统弹窗输入后，可选择“始终允许”。运行时访问“观影记录 · TMDB/OMDb API Key”的提示则对应应用保存的 Key。
 
 参考：[Apple 的 Mac 钥匙串说明](https://developer.apple.com/documentation/technotes/tn3137-on-mac-keychains)、[代码签名与钥匙串访问身份](https://developer.apple.com/library/archive/technotes/tn2206/_index.html)、[Xcode 应用签名说明](https://help.apple.com/xcode/mac/current/en.lproj/dev3a05256b8.html)。
+
+## 开发团队签名验证（2026-10-27）
+
+- Team：`4DK6SF45V9`，使用用户在 Xcode 创建的 Apple Development 证书。
+- App 与测试目标的 Debug / Release 均配置同一 Team 和自动签名。
+- `xcodebuild build`（Debug）：通过，退出码 0。
+- `xcodebuild test`：通过，16 项测试、共 17 次执行，0 失败、0 跳过。
+- `codesign --verify --deep --strict`：应用和测试包均通过；两者的实际 `TeamIdentifier` 都是 `4DK6SF45V9`，签名身份均为 Apple Development。
+- 本次仅更新已有工程的签名字段和本文档；不包含任何证书私钥或 API Key。提交仅保存在本地，Git 推送由用户决定。
 
 ## 后续步骤（等待逐步确认）
 3. TMDB 搜索、自动填写、可选 OMDb 评分、个人信息表单、保存与详情。
