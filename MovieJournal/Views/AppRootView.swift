@@ -3,6 +3,8 @@ import SwiftUI
 
 struct AppRootView: View {
     let persistence: PersistenceController
+    @Environment(SettingsViewModel.self) private var settings
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -21,6 +23,12 @@ struct AppRootView: View {
         .frame(minWidth: 760, minHeight: 520)
         .task {
             persistence.loadIfNeeded()
+            await settings.refreshIfNeeded()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await settings.refresh() }
+            }
         }
     }
 }
