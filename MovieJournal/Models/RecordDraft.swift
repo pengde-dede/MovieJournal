@@ -8,16 +8,31 @@ struct RecordDraft {
     var watchedOn: Date = .now
     var myRating: Int?
     var shortReview = ""
-    var watchedSeason: Int?
+    // 保留正在输入的原文，校验失败也不丢失；只有有效整数才进入持久化模型。
+    var watchedSeasonText = ""
+    var watchedSeason: Int? {
+        get {
+            let text = watchedSeasonText.trimmingCharacters(in: .whitespacesAndNewlines)
+                .folding(options: .widthInsensitive, locale: Locale(identifier: "en_US_POSIX"))
+            guard let value = Int(text), value > 0 else { return nil }
+            return value
+        }
+        set { watchedSeasonText = newValue.map(String.init) ?? "" }
+    }
+
+    var seasonValidationMessage: String? {
+        guard details.mediaType == .tv, watchedSeason == nil else { return nil }
+        if watchedSeasonText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "请填写看到第几季，例如 2（只填写数字）。"
+        }
+        return "请只填写大于 0 的整数，例如 2（表示第 2 季）。"
+    }
 
     var validationMessage: String? {
         guard let myRating, (1...10).contains(myRating) else {
             return "请选择 1–10 分的个人评分。"
         }
-        if details.mediaType == .tv, (watchedSeason ?? 0) < 1 {
-            return "请填写看到第几季，季数需要是大于 0 的整数。"
-        }
-        return nil
+        return seasonValidationMessage
     }
 
     func makeRecord() throws -> ViewingRecord {

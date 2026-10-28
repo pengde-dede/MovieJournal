@@ -18,15 +18,24 @@ struct RecordEditorView: View {
                     }
                 }
                 if draft.details.mediaType == .tv {
-                    TextField("看到第几季（必填）", value: $draft.watchedSeason, format: .number.grouping(.never))
-                        .textFieldStyle(.roundedBorder)
-                    Text("可以记录正在观看、尚未看完的这一季。")
-                        .font(.caption).foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("看到第几季（必填）")
+                        TextField("例如：2（只填写数字）", text: $draft.watchedSeasonText)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityLabel("看到第几季")
+                        Text("只填写数字，例如 2；可以记录正在观看、尚未看完的这一季。")
+                            .font(.caption).foregroundStyle(.secondary)
+                        if !draft.watchedSeasonText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                           let message = draft.seasonValidationMessage {
+                            Text(message).font(.callout).foregroundStyle(.orange)
+                        }
+                    }
                 }
                 TextField("一句话短评（可空）", text: $draft.shortReview, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(2...4)
-                if let message = draft.validationMessage {
+                if let message = draft.validationMessage,
+                   draft.watchedSeasonText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || message != draft.seasonValidationMessage {
                     Text(message).font(.callout).foregroundStyle(.secondary)
                 }
             }
