@@ -11,11 +11,22 @@ macOS 原生观影记录应用。使用 SwiftUI + SwiftData，最低 macOS 14，
 - 联网添加时输入片名搜索 TMDB，只显示第一页候选；选中后获取中文资料、原名、年份、类型、导演 / 主创和前 5 位主演。中文简介为空时再请求英文，并显示“英文简介”。
 - 观看日期默认今天；个人评分需主动选择 1–10 的整数，短评可空；剧集额外填写正在看到的季数，只填数字，例如 `2` 表示第 2 季。
 - 新记录在海报缓存完成后可以保存；图片下载失败时给出中文提示，仍允许保存文字资料，之后可重试海报。OMDb 补充评分独立加载，未配置或请求失败不影响保存。
-- 保存后打开详情。影片资料、平台评分和个人信息作为快照保存在本机；重复添加提供“打开已有记录”，不会覆盖个人信息。
+- 保存后打开详情。影片资料、平台评分和个人信息作为快照保存在本机；重复添加提供“打开已有记录”，不会覆盖个人信息。填写 OMDb Key 后，旧记录可在详情页手动“刷新补充评分”，结果保存到本机，重开仍可读。
 - 设置页每把 Key 都有“验证”按钮，验证已保存的值。新输入需先保存；验证结果只保留在本次运行中，更换 / 清除 Key 后会重置。
 - TMDB Key 以 `eyJ` 开头或去掉首尾空白后长度超过 64 时，显示 Token 提示；只提示，不阻止保存，也不用于判定 Key 是否有效。
-- 详情页可编辑观看日期、个人评分、短评和剧集季数；取消不会写库，保存后保留原添加顺序。电影资料与各平台评分仍使用已保存的资料快照。
+- 详情页可编辑观看日期、个人评分、短评和剧集季数；取消不会写库，保存后保留原添加顺序。电影资料仍使用已保存的资料快照，补充评分可通过详情页按钮单独刷新。
 - 删除前显示二次确认；成功后返回资料库，海报按剩余记录引用清理。有任意添加窗口打开时，先推迟清理；最后一个添加窗口关闭后重新读取数据库，保护刚保存的草稿海报。
+
+## 刷新旧记录的 IMDb / 烂番茄评分
+
+1. 在设置里保存已激活的 OMDb Key，点击“验证”，确认“有效”。
+2. 打开以前已保存的作品详情，点击工具栏的“刷新补充评分”（循环箭头图标）。不必删除或重新添加记录。
+3. 等待“正在刷新 IMDb 和烂番茄评分…”结束，查看评分和中文结果提示。成功获取的评分立即保存到本机；退出重开后仍可显示。
+4. 每部记录单独刷新。启动与填写 Key 不会自动向 OMDb 批量查询；原有资料可以继续离线查看。
+5. 接口只返回某一项时更新这一项，另一项保留原值；两项都没有时显示“暂无补充评分”，原有评分保持不变。原本为空的项目继续留空。
+6. 未配置 Key、Key 无效、断网、请求次数耗尽或保存失败时显示中文提示，已有评分不会被清空。恢复后再次点击即可重试。没有 IMDb 编号的记录会解释原因。
+
+刷新只更新 IMDb 和烂番茄评分，不更改观看日期、个人评分、短评、剧集进度、影片资料、海报和添加顺序。离开详情会取消当前请求，迟到响应不能写回已删除或已取消的记录。
 
 ## 在 Xcode 中验证第 5 步
 
@@ -95,7 +106,13 @@ TEST_RUNNER_MOVIEJOURNAL_LIVE_API_TESTS=1 xcodebuild -project MovieJournal.xcode
 TEST_RUNNER_MOVIEJOURNAL_LIVE_API_TESTS=1 xcodebuild -project MovieJournal.xcodeproj -scheme MovieJournal -configuration Debug -destination 'platform=macOS,arch=arm64' test
 ```
 
-常规测试使用假网络响应、假 Key 和独立临时数据库。OMDb 的真实评分需要用户填写有效 Key 后在界面验收；常规测试覆盖其评分解析、缺失、无效 Key 和服务失败。
+OMDb 真实补分测试采用独立开关。已保存有效 OMDb Key 时，可运行：
+
+```sh
+TEST_RUNNER_MOVIEJOURNAL_LIVE_OMDB_TESTS=1 xcodebuild -project MovieJournal.xcodeproj -scheme MovieJournal -configuration Debug -destination 'platform=macOS,arch=arm64' -only-testing:MovieJournalTests/LiveOMDbSmokeTests test
+```
+
+同时在上方完整测试命令设置 `TEST_RUNNER_MOVIEJOURNAL_LIVE_OMDB_TESTS=1` 和 `TEST_RUNNER_MOVIEJOURNAL_LIVE_API_TESTS=1`，即可运行包含两种真实接口的全部测试。两种真实测试只写独立临时数据库，不修改正式观影记录；Key 只在签名测试进程中读取，不输出明文。常规测试使用假网络响应、假 Key 和独立临时数据库，覆盖评分解析、缺失、无效 Key、服务失败、重试、取消与磁盘保存。
 
 ## 第 2 步的验收步骤（已通过）
 
@@ -208,6 +225,16 @@ xcodebuild -project MovieJournal.xcodeproj -scheme MovieJournal -configuration D
 - 结果：`/private/tmp/MovieJournal-Step5-FinalAllTests.xcresult`；新增功能初轮专项结果：`/private/tmp/MovieJournal-Step5-FocusedTests.xcresult`。补存间隙测试先确认原逻辑误删（`/private/tmp/MovieJournal-Step5-BackfillProtection-Red.xcresult`），修复后同组测试通过（`/private/tmp/MovieJournal-Step5-BackfillProtection-Green.xcresult`）。临时结果与测试数据不加入 Git。
 - 应用与测试包 `codesign --verify --deep --strict` 均通过，实际 Team 均为 `4DK6SF45V9`。工程配置、V1 模型、迁移计划、钥匙串、连续搜索绑定修复与季数输入控件未改动；没有新增依赖。
 - 原生按钮、确认弹窗、窗口关闭和键盘操作仍需按“在 Xcode 中验证第 5 步”手动验收，自动化通过不代表这些交互已经人工验收。
+
+## 旧记录补充评分刷新验证（2026-10-29）
+
+- 详情工具栏新增“刷新补充评分”。只使用记录中的 IMDb 编号向 OMDb 查询，结果显式保存；不自动批量刷新，不查询 TMDB、不重新下载海报，不更改个人信息、添加顺序或影片资料。
+- 缺失项目保留旧值；失败给出中文提示。离开详情或成功删除时取消请求，使用请求编号隔离迟到响应；数据库按记录 UUID 与预期 IMDb 编号检查，防止写回已删除或编号已变化的记录。保存失败回滚，两项评分都不留下未保存的改动。
+- 新增常规测试 11 项、共 19 次执行：覆盖电影 / 剧集补分与磁盘重开、部分缺失、不配置或无效 Key、断网与额度、缺少 IMDb 编号、连续点击、取消后重试、并发编辑 / 删除、编号改变、保存失败回滚与恢复网络重试。
+- 新增独立开关的真实 OMDb 测试 1 项、共 2 次执行：在临时数据库分别保存两部指定作品的无评分记录，使用钥匙串里的 OMDb Key 刷新，并重开核对。凭据不输出，正式记录不受影响；烂番茄评分允许接口留空。
+- `xcodebuild build`（Debug / My Mac arm64）：通过，退出码 0。显式开启 TMDB 与 OMDb 真实测试，完整测试 **100 项、共 130 次执行全部通过，0 失败、0 跳过、无运行时警告**。
+- 完整结果：`/private/tmp/MovieJournal-RatingsRefresh-AllTests.xcresult`；常规专项结果：`/private/tmp/MovieJournal-RatingsRefresh-FocusedTests.xcresult`。测试结果不加入 Git。
+- 工程配置、V1 模型、迁移计划、钥匙串、海报缓存清理和原输入控件均保持不变。原生按钮和状态提示按本文“刷新旧记录的 IMDb / 烂番茄评分”手动验收。
 
 ## 代码位置
 

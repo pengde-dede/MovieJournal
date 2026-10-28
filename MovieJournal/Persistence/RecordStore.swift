@@ -8,6 +8,7 @@ final class RecordStore {
         case invalidRating
         case invalidSeason
         case recordNotFound
+        case imdbIDChanged
 
         var errorDescription: String? {
             switch self {
@@ -19,6 +20,8 @@ final class RecordStore {
                 "请填写有效的剧集季数，例如 2（只填写大于 0 的整数）。"
             case .recordNotFound:
                 "这条记录已被其他窗口删除，请返回资料库查看。"
+            case .imdbIDChanged:
+                "作品的 IMDb 编号已改变，请重新打开记录后再刷新。"
             }
         }
     }
@@ -75,6 +78,22 @@ final class RecordStore {
         record.shortReview = shortReview.trimmingCharacters(in: .whitespacesAndNewlines)
         record.watchedSeason = record.mediaType == .tv ? watchedSeason : nil
         record.updatedAt = .now
+        do { try saveChanges() }
+        catch {
+            context.rollback()
+            throw error
+        }
+    }
+
+    func updateSupplementalRatings(_ ratings: PlatformRatings, recordID: UUID, expectedIMDbID: String) throws {
+        let record = try requiredRecord(id: recordID)
+        guard record.imdbID.nonEmpty == expectedIMDbID else { throw SaveError.imdbIDChanged }
+        // 接口没有返回的项目保留原值，不能用缺失评分覆盖已有评分。
+        let imdb = ratings.imdb ?? record.imdbRating
+        let tomatoes = ratings.rottenTomatoes ?? record.rottenTomatoesRating
+        guard imdb != record.imdbRating || tomatoes != record.rottenTomatoesRating else { return }
+        record.imdbRating = imdb
+        record.rottenTomatoesRating = tomatoes
         do { try saveChanges() }
         catch {
             context.rollback()

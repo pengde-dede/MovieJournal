@@ -50,7 +50,7 @@ struct LibraryView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("观影记录")
-            .navigationDestination(for: UUID.self) { RecordDetailDestinationView(recordID: $0, cleanup: cleanup) }
+            .navigationDestination(for: UUID.self) { RecordDetailDestinationView(recordID: $0, cleanup: cleanup, catalog: catalog) }
             .toolbar {
                 ToolbarItem(placement: .automatic) {
                     Text(matching.count == records.count ? "\(records.count) 部作品" : "显示 \(matching.count) / \(records.count) 部")

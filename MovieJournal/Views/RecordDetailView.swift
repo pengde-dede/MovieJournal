@@ -5,16 +5,18 @@ struct RecordDetailDestinationView: View {
     @Query private var records: [ViewingRecord]
     @Environment(\.dismiss) private var dismiss
     let cleanup: PosterCleanupCoordinator
+    let catalog: any MediaCatalogServing
 
-    init(recordID: UUID, cleanup: PosterCleanupCoordinator) {
+    init(recordID: UUID, cleanup: PosterCleanupCoordinator, catalog: any MediaCatalogServing) {
         let identifier = recordID
         _records = Query(filter: #Predicate<ViewingRecord> { $0.id == identifier })
         self.cleanup = cleanup
+        self.catalog = catalog
     }
 
     var body: some View {
         if let record = records.first {
-            RecordDetailView(record: record, cleanup: cleanup)
+            RecordDetailView(record: record, cleanup: cleanup, catalog: catalog).id(record.id)
         } else {
             ContentUnavailableView {
                 Label("这条记录已不存在", systemImage: "film")
@@ -30,6 +32,7 @@ struct RecordDetailDestinationView: View {
 struct RecordDetailView: View {
     let record: ViewingRecord
     let cleanup: PosterCleanupCoordinator
+    let catalog: any MediaCatalogServing
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @State private var model = RecordDetailViewModel()
@@ -41,6 +44,17 @@ struct RecordDetailView: View {
             VStack(alignment: .leading, spacing: 24) {
                 if let error = model.deleteError {
                     Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red)
+                }
+                if model.isRefreshingRatings {
+                    HStack {
+                        ProgressView().controlSize(.small)
+                        Text("正在刷新 IMDb 和烂番茄评分…")
+                    }
+                    .foregroundStyle(.secondary)
+                } else if let message = model.ratingsMessage {
+                    Label(message, systemImage: model.ratingsRefreshFailed ? "exclamationmark.triangle" : "info.circle")
+                        .font(.callout)
+                        .foregroundStyle(model.ratingsRefreshFailed ? Color.orange : Color.secondary)
                 }
                 MediaInformationView(details: MediaDetails(record: record), posterFilename: record.posterFilename)
                 GroupBox("我的观影记录") {
@@ -65,7 +79,16 @@ struct RecordDetailView: View {
         }
         .navigationTitle(record.title)
         .textSelection(.enabled)
+        .onDisappear { model.cancelRatingRefresh() }
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("刷新补充评分", systemImage: "arrow.clockwise") {
+                    model.refreshRatings(recordID: record.id, imdbID: record.imdbID, catalog: catalog,
+                        store: RecordStore(context: context))
+                }
+                .help("刷新 IMDb 和烂番茄评分")
+                .disabled(model.isRefreshingRatings)
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button("编辑", systemImage: "pencil") { isEditing = true }.help("编辑观影记录")
             }
