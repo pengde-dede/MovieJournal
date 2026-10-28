@@ -24,9 +24,14 @@ final class LibraryViewModel {
     func matchingRecords(in records: [ViewingRecord]) -> [ViewingRecord] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         return records.filter {
-            mediaFilter.includes($0.mediaType) && (query.isEmpty
-                || $0.title.localizedStandardContains(query) || $0.originalTitle.localizedStandardContains(query))
+            mediaFilter.includes($0.mediaType) && (query.isEmpty || Self.record($0, matches: query))
         }
+    }
+
+    // 片名之外也匹配导演（剧集为主创）和保存的主演；人名沿用 TMDB 返回的写法。
+    private static func record(_ record: ViewingRecord, matches query: String) -> Bool {
+        ([record.title, record.originalTitle] + record.creatorNames + record.castNames)
+            .contains { $0.localizedStandardContains(query) }
     }
 
     func resetFilters() {

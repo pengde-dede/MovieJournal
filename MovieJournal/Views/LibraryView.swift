@@ -27,9 +27,9 @@ struct LibraryView: View {
                 HStack(spacing: 18) {
                     HStack {
                         Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                        TextField("搜索已保存的片名", text: $model.searchText)
+                        TextField("搜索片名、导演或主演", text: $model.searchText)
                             .textFieldStyle(.plain)
-                            .accessibilityLabel("搜索已保存的片名")
+                            .accessibilityLabel("搜索片名、导演或主演")
                         if !model.searchText.isEmpty {
                             Button { model.searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
                                 .buttonStyle(.plain).help("清除搜索")
@@ -148,7 +148,7 @@ struct LibraryView: View {
             ContentUnavailableView {
                 Label("没有符合条件的记录", systemImage: "magnifyingglass")
             } description: {
-                Text("试试其他片名，或切换电影与剧集筛选。")
+                Text("试试其他片名或人名（欧美影人多为英文名），或切换电影与剧集筛选。")
             } actions: {
                 Button("清除搜索和筛选") { model.resetFilters() }
             }

@@ -27,6 +27,33 @@ struct LibraryTests {
         #expect(model.matchingRecords(in: records).isEmpty)
     }
 
+    @Test("搜索也匹配导演、剧集主创和主演，忽略大小写，类型筛选仍然生效")
+    func peopleSearchMatchesDirectorsCreatorsAndCast() throws {
+        let records = [
+            ViewingRecord(tmdbID: 1396, mediaType: .tv, title: "绝命毒师", originalTitle: "Breaking Bad",
+                          creatorNames: ["Vince Gilligan"], castNames: ["Bryan Cranston", "Aaron Paul"], myRating: 9),
+            ViewingRecord(tmdbID: 346, mediaType: .movie, title: "七武士", originalTitle: "Seven Samurai",
+                          creatorNames: ["Akira Kurosawa"], castNames: ["Toshiro Mifune", "Takashi Shimura"], myRating: 9),
+            ViewingRecord(tmdbID: 25538, mediaType: .movie, title: "一一", originalTitle: "一一",
+                          creatorNames: ["杨德昌"], castNames: ["吴念真"], myRating: 9)
+        ]
+        let model = LibraryViewModel()
+        model.searchText = " kurosawa "
+        #expect(model.matchingRecords(in: records).map(\.tmdbID) == [346])
+        model.searchText = "杨德昌"
+        #expect(model.matchingRecords(in: records).map(\.tmdbID) == [25538])
+        model.searchText = "gilligan"
+        #expect(model.matchingRecords(in: records).map(\.tmdbID) == [1396])
+        model.searchText = "MIFUNE"
+        #expect(model.matchingRecords(in: records).map(\.tmdbID) == [346])
+        model.searchText = "吴念真"
+        #expect(model.matchingRecords(in: records).map(\.tmdbID) == [25538])
+        model.searchText = "aaron paul"
+        #expect(model.matchingRecords(in: records).map(\.tmdbID) == [1396])
+        model.mediaFilter = .movie
+        #expect(model.matchingRecords(in: records).isEmpty)
+    }
+
     @Test("搜索和筛选保留数据库按添加时间倒序的结果")
     func filteringPreservesAddedOrder() throws {
         let fixture = try databaseFixture()
