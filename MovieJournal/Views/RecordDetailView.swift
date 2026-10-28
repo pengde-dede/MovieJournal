@@ -3,25 +3,46 @@ import SwiftUI
 
 struct RecordDetailDestinationView: View {
     @Query private var records: [ViewingRecord]
+    @Environment(\.dismiss) private var dismiss
+    let cleanup: PosterCleanupCoordinator
 
-    init(recordID: UUID) {
+    init(recordID: UUID, cleanup: PosterCleanupCoordinator) {
         let identifier = recordID
         _records = Query(filter: #Predicate<ViewingRecord> { $0.id == identifier })
+        self.cleanup = cleanup
     }
 
     var body: some View {
-        if let record = records.first { RecordDetailView(record: record) }
-        else { ContentUnavailableView("没有找到这条记录", systemImage: "film") }
+        if let record = records.first {
+            RecordDetailView(record: record, cleanup: cleanup)
+        } else {
+            ContentUnavailableView {
+                Label("这条记录已不存在", systemImage: "film")
+            } description: {
+                Text("记录可能已在其他窗口中删除。")
+            } actions: {
+                Button("返回资料库") { dismiss() }
+            }
+        }
     }
 }
 
 struct RecordDetailView: View {
     let record: ViewingRecord
+    let cleanup: PosterCleanupCoordinator
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @State private var model = RecordDetailViewModel()
+    @State private var isEditing = false
 
     var body: some View {
-        ScrollView {
+        @Bindable var model = model
+        return ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                MediaInformationView(details: details, posterFilename: record.posterFilename)
+                if let error = model.deleteError {
+                    Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red)
+                }
+                MediaInformationView(details: MediaDetails(record: record), posterFilename: record.posterFilename)
                 GroupBox("我的观影记录") {
                     VStack(alignment: .leading, spacing: 14) {
                         LabeledContent(record.mediaType == .tv ? "最近观看日期" : "观看日期") {
@@ -44,17 +65,27 @@ struct RecordDetailView: View {
         }
         .navigationTitle(record.title)
         .textSelection(.enabled)
-    }
-
-    private var details: MediaDetails {
-        MediaDetails(
-            tmdbID: record.tmdbID, mediaType: record.mediaType,
-            title: record.title, originalTitle: record.originalTitle, releaseYear: record.releaseYear,
-            genres: record.genres, overview: record.overview, overviewLanguage: record.overviewLanguage,
-            creatorNames: record.creatorNames, castNames: record.castNames,
-            imdbID: record.imdbID, tmdbRating: record.tmdbRating, imdbRating: record.imdbRating,
-            rottenTomatoesRating: record.rottenTomatoesRating, posterPath: record.posterPath,
-            fetchedAt: record.metadataFetchedAt, informationNote: nil
-        )
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("编辑", systemImage: "pencil") { isEditing = true }.help("编辑观影记录")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button("删除", systemImage: "trash", role: .destructive) {
+                    model.requestDeletion(id: record.id, title: record.title)
+                }
+                .help("删除观影记录")
+            }
+        }
+        .sheet(isPresented: $isEditing) {
+            EditRecordView(record: record, store: RecordStore(context: context))
+        }
+        .alert("删除观影记录？", isPresented: $model.isShowingDeleteConfirmation, presenting: model.deletionRequest) { _ in
+            Button("取消", role: .cancel) { model.cancelDeletion() }
+            Button("删除记录", role: .destructive) {
+                if model.confirmDeletion(store: RecordStore(context: context), cleanup: cleanup) { dismiss() }
+            }
+        } message: { request in
+            Text("将删除《\(request.title)》的观看日期、个人评分和短评。删除后无法恢复。")
+        }
     }
 }

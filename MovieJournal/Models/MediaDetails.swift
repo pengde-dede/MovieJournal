@@ -42,3 +42,19 @@ nonisolated enum SupplementalRatingsResult: Equatable, Sendable {
     case noIMDbID
     case unavailable(String)
 }
+
+// 从本地快照构造展示资料，编辑和详情均不需要联网。
+extension MediaDetails {
+    @MainActor
+    init(record: ViewingRecord) {
+        self.init(
+            tmdbID: record.tmdbID, mediaType: record.mediaType,
+            title: record.title, originalTitle: record.originalTitle, releaseYear: record.releaseYear,
+            genres: record.genres, overview: record.overview, overviewLanguage: record.overviewLanguage,
+            creatorNames: record.creatorNames, castNames: record.castNames,
+            imdbID: record.imdbID, tmdbRating: record.tmdbRating, imdbRating: record.imdbRating,
+            rottenTomatoesRating: record.rottenTomatoesRating, posterPath: record.posterPath,
+            fetchedAt: record.metadataFetchedAt, informationNote: nil
+        )
+    }
+}

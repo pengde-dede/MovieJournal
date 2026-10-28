@@ -4,10 +4,12 @@ import SwiftUI
 struct LibraryView: View {
     let catalog: any MediaCatalogServing
     let posters: any PosterFileManaging
+    let cleanup: PosterCleanupCoordinator
     @Environment(\.modelContext) private var context
     @Query(sort: \ViewingRecord.createdAt, order: .reverse) private var records: [ViewingRecord]
     @State private var model = LibraryViewModel()
     @State private var isShowingAdd = false
+    @State private var addingSession: UUID?
     @State private var path: [UUID] = []
     @State private var posterRetry = 0
 
@@ -48,7 +50,7 @@ struct LibraryView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("观影记录")
-            .navigationDestination(for: UUID.self) { RecordDetailDestinationView(recordID: $0) }
+            .navigationDestination(for: UUID.self) { RecordDetailDestinationView(recordID: $0, cleanup: cleanup) }
             .toolbar {
                 ToolbarItem(placement: .automatic) {
                     Text(matching.count == records.count ? "\(records.count) 部作品" : "显示 \(matching.count) / \(records.count) 部")
@@ -58,32 +60,58 @@ struct LibraryView: View {
                     SettingsLink { Label("设置", systemImage: "gearshape") }.help("设置")
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    Button("添加观影记录", systemImage: "plus") { isShowingAdd = true }
-                        .help("添加观影记录").disabled(model.isPreparingLibrary)
+                    Button("添加观影记录", systemImage: "plus") { showAdd() }
+                        .help("添加观影记录").disabled(model.isPreparingLibrary || cleanup.isCleaning)
                 }
             }
-            .sheet(isPresented: $isShowingAdd) {
+            .sheet(isPresented: $isShowingAdd, onDismiss: finishAdding) {
                 AddRecordView(catalog: catalog, store: RecordStore(context: context), posters: posters) { id in
                     isShowingAdd = false
                     if path.last != id { path.append(id) }
                 }
             }
         }
+        .onDisappear { finishAdding() }
         .environment(\.posterCache, posters)
         .environment(\.posterReloadVersions, model.posterReloadVersions)
         .task(id: PosterBatchID(records: records.map(\.id), retry: posterRetry)) {
             let targets = records.map { SavedPosterTarget(recordID: $0.id, path: $0.posterPath, filename: $0.posterFilename) }
-            await model.cacheSavedPosters(targets, cache: posters, store: RecordStore(context: context))
+            await model.cacheSavedPosters(targets, cache: posters, store: RecordStore(context: context), cleanup: cleanup)
         }
+    }
+
+    private func showAdd() {
+        guard !model.isPreparingLibrary, addingSession == nil, let session = cleanup.beginAdding() else { return }
+        addingSession = session
+        isShowingAdd = true
+    }
+
+    private func finishAdding() {
+        guard let session = addingSession else { return }
+        addingSession = nil
+        cleanup.finishAdding(session, store: RecordStore(context: context))
     }
 
     @ViewBuilder
     private var posterStatus: some View {
-        if let message = model.cleanupMessage {
-            Label(message, systemImage: "exclamationmark.triangle")
-                .font(.callout).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 28).padding(.vertical, 10)
+        if let message = cleanup.cleanupMessage {
+            HStack(alignment: .top, spacing: 12) {
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button("重试海报清理") { cleanup.requestCleanup(store: RecordStore(context: context)) }
+                    .disabled(cleanup.isCleaning)
+            }
+            .padding(.horizontal, 28).padding(.vertical, 10)
+        }
+        if cleanup.isCleaning {
+            HStack {
+                ProgressView().controlSize(.small)
+                Text("正在清理未使用的海报…")
+                Spacer()
+            }
+            .font(.callout).foregroundStyle(.secondary)
+            .padding(.horizontal, 28).padding(.vertical, 10)
         }
         if model.isCachingPosters {
             HStack {
@@ -112,8 +140,8 @@ struct LibraryView: View {
             } description: {
                 Text("把看过的电影和剧集留在这里。")
             } actions: {
-                Button("添加观影记录", systemImage: "plus") { isShowingAdd = true }
-                    .buttonStyle(.borderedProminent).disabled(model.isPreparingLibrary)
+                Button("添加观影记录", systemImage: "plus") { showAdd() }
+                    .buttonStyle(.borderedProminent).disabled(model.isPreparingLibrary || cleanup.isCleaning)
             }
         } else if matching.isEmpty {
             ContentUnavailableView {

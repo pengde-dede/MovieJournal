@@ -18,7 +18,6 @@ final class LibraryViewModel {
     private(set) var posterMessage: String?
     private(set) var posterReloadVersions: [String: Int] = [:]
     private(set) var isPreparingLibrary = true
-    private(set) var cleanupMessage: String?
     private var didPrepareLibrary = false
     private var cacheRevision = 0
 
@@ -35,7 +34,7 @@ final class LibraryViewModel {
         mediaFilter = .all
     }
 
-    func cacheSavedPosters(_ targets: [SavedPosterTarget], cache: any PosterFileManaging, store: RecordStore) async {
+    func cacheSavedPosters(_ targets: [SavedPosterTarget], cache: any PosterFileManaging, store: RecordStore, cleanup: PosterCleanupCoordinator) async {
         cacheRevision += 1
         let revision = cacheRevision
         totalPosters = 0
@@ -73,9 +72,7 @@ final class LibraryViewModel {
                 }
             }
             if !didPrepareLibrary {
-                let references = Set(try store.recordsNewestFirst().compactMap(\.posterFilename))
-                do { _ = try await cache.cleanupAtStartup(referencedFilenames: references) }
-                catch { cleanupMessage = error.localizedDescription }
+                await cleanup.cleanupAtStartup(store: store)
                 try Task.checkCancellation()
                 guard revision == cacheRevision else { return }
                 didPrepareLibrary = true

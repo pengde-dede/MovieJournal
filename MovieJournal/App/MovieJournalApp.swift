@@ -4,6 +4,7 @@ import SwiftUI
 struct MovieJournalApp: App {
     @State private var persistence = PersistenceController()
     @State private var settings: SettingsViewModel
+    @State private var posterCleanup: PosterCleanupCoordinator
     private let catalog: any MediaCatalogServing
     private let posters: any PosterFileManaging
     private let thumbnails: any PosterThumbnailLoading
@@ -13,7 +14,9 @@ struct MovieJournalApp: App {
         let transport = HTTPClient()
         let tmdb = TMDBClient(transport: transport)
         let omdb = OMDbClient(transport: transport)
-        posters = PosterCache(transport: transport)
+        let posterCache = PosterCache(transport: transport)
+        posters = posterCache
+        _posterCleanup = State(initialValue: PosterCleanupCoordinator(cache: posterCache))
         thumbnails = PosterThumbnailCache(transport: transport)
         catalog = MediaCatalogService(keychain: keychain, tmdb: tmdb, omdb: omdb)
         _settings = State(initialValue: SettingsViewModel(keychain: keychain, validator: APIKeyValidator(tmdb: tmdb, omdb: omdb)))
@@ -21,7 +24,7 @@ struct MovieJournalApp: App {
 
     var body: some Scene {
         WindowGroup("观影记录") {
-            AppRootView(persistence: persistence, catalog: catalog, posters: posters)
+            AppRootView(persistence: persistence, catalog: catalog, posters: posters, cleanup: posterCleanup)
                 .environment(\.posterThumbnails, thumbnails)
                 .environment(settings)
                 .environment(\.locale, Locale(identifier: "zh_CN"))

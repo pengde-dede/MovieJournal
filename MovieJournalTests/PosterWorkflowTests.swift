@@ -69,13 +69,14 @@ struct PosterWorkflowTests {
         let record = ViewingRecord(tmdbID: 278, mediaType: .movie, title: "电影", posterPath: Fixtures.movie.posterPath, myRating: 8)
         try fixture.store.insert(record)
         let cache = ControlledPosterCache()
+        let cleanup = PosterCleanupCoordinator(cache: cache)
         let model = LibraryViewModel()
         let task = Task {
-            await model.cacheSavedPosters([SavedPosterTarget(recordID: record.id, path: record.posterPath, filename: nil)], cache: cache, store: fixture.store)
+            await model.cacheSavedPosters([SavedPosterTarget(recordID: record.id, path: record.posterPath, filename: nil)], cache: cache, store: fixture.store, cleanup: cleanup)
         }
         await cache.waitForMovie()
         task.cancel()
-        await model.cacheSavedPosters([], cache: cache, store: fixture.store)
+        await model.cacheSavedPosters([], cache: cache, store: fixture.store, cleanup: cleanup)
         let currentReload = model.posterReloadVersions
         await cache.finishMovie()
         await task.value

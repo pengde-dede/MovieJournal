@@ -36,7 +36,7 @@ nonisolated enum PosterCacheError: LocalizedError, Equatable, Sendable {
     var errorDescription: String? {
         switch self {
         case .localFileUnavailable: "本地海报文件暂不可用，联网后可重试补存。"
-        case .cleanupFailed: "未能完成海报清理，已保留现有记录，请稍后重新启动应用重试。"
+        case .cleanupFailed: "未能完成海报清理，请稍后点击“重试海报清理”。"
         case .noPoster: "这部作品没有可用的海报。"
         case .invalidImage: "下载的海报无法识别，请稍后重试。"
         case .downloadFailed: "海报暂时无法下载，请稍后重试。"
@@ -95,7 +95,7 @@ actor PosterCache: PosterFileManaging {
         return try removeUnreferencedFiles(referencedFilenames: referencedFilenames)
     }
 
-    /// 删除记录后可复用；调用方在保存数据库后传入所有剩余记录的文件名。
+    /// 由共享清理管理器调用；数据库先保存，添加窗口全部关闭后再传入最新的剩余引用。
     func removeUnreferencedFiles(referencedFilenames: Set<String>) throws -> Int {
         guard let directory, FileManager.default.fileExists(atPath: directory.path) else { return 0 }
         let retained = referencedFilenames.union(inFlight.keys)

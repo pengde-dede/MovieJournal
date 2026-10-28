@@ -5,13 +5,14 @@ struct AppRootView: View {
     let persistence: PersistenceController
     let catalog: any MediaCatalogServing
     let posters: any PosterFileManaging
+    let cleanup: PosterCleanupCoordinator
     @Environment(SettingsViewModel.self) private var settings
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
             if let container = persistence.container {
-                LibraryView(catalog: catalog, posters: posters)
+                LibraryView(catalog: catalog, posters: posters, cleanup: cleanup)
                     .modelContainer(container)
             } else if let errorDescription = persistence.errorDescription {
                 StorageErrorView(errorDescription: errorDescription) {

@@ -70,3 +70,14 @@ struct RecordDraft {
         }
     }
 }
+
+extension RecordDraft {
+    init(record: ViewingRecord) {
+        self.init(details: MediaDetails(record: record))
+        posterFilename = record.posterFilename
+        watchedOn = record.watchedOn
+        myRating = record.myRating
+        shortReview = record.shortReview
+        watchedSeason = record.watchedSeason
+    }
+}
