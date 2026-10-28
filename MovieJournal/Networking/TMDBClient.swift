@@ -36,6 +36,65 @@ nonisolated struct TMDBClient: Sendable {
         }
     }
 
+    func searchPeople(name: String, key: String) async throws -> [PersonSearchResult] {
+        let request = try request(path: "/3/search/person", key: key, query: [
+            URLQueryItem(name: "query", value: name),
+            URLQueryItem(name: "language", value: "zh-CN"),
+            URLQueryItem(name: "page", value: "1"),
+            URLQueryItem(name: "include_adult", value: "false")
+        ])
+        let response = try await transport.send(request)
+        try APIRequest.check(response, provider: .tmdb)
+        let decoded = try APIRequest.decode(TMDBPersonSearchResponse.self, from: response.data)
+        let people = decoded.results.compactMap { person -> PersonSearchResult? in
+            guard person.id > 0, let name = person.name.nonEmpty else { return nil }
+            let knownFor = (person.knownFor ?? []).compactMap { $0.title.nonEmpty ?? $0.name.nonEmpty }
+            return PersonSearchResult(id: person.id, name: name, department: person.knownForDepartment,
+                                      profilePath: person.profilePath, knownFor: Array(knownFor.prefix(3)))
+        }
+        // 导演排在前面，但不过滤其他人：不少导演在 TMDB 上的主要职业是演员或编剧。
+        return people.filter(\.isDirector) + people.filter { !$0.isDirector }
+    }
+
+    func directedWorks(personID: Int, key: String) async throws -> [CreditedWork] {
+        let request = try request(path: "/3/person/\(personID)/combined_credits", key: key, query: [
+            URLQueryItem(name: "language", value: "zh-CN")
+        ])
+        let response = try await transport.send(request)
+        try APIRequest.check(response, provider: .tmdb)
+        let decoded = try APIRequest.decode(TMDBCombinedCreditsResponse.self, from: response.data)
+        var seen = Set<String>()
+        let works = (decoded.crew ?? []).compactMap { credit -> (work: CreditedWork, date: String?)? in
+            guard credit.id > 0, let type = MediaType(rawValue: credit.mediaType ?? "") else { return nil }
+            // 只要执导的电影和主创的剧集；剧集的单集导演不计入，避免同一部剧占满列表。
+            let role: CreditRole
+            switch type {
+            case .movie where credit.job == "Director": role = .director
+            case .tv where credit.department == "Creator" || credit.job == "Creator": role = .creator
+            default: return nil
+            }
+            let original = type == .movie ? credit.originalTitle : credit.originalName
+            let title = (type == .movie ? credit.title : credit.name).nonEmpty ?? original.nonEmpty ?? "未命名作品"
+            let date = (type == .movie ? credit.releaseDate : credit.firstAirDate).nonEmpty
+            let result = MediaSearchResult(
+                tmdbID: credit.id, mediaType: type, title: title,
+                originalTitle: original.nonEmpty ?? title,
+                releaseYear: Self.year(date), posterPath: credit.posterPath
+            )
+            guard seen.insert(result.id).inserted else { return nil }
+            return (CreditedWork(result: result, role: role), date)
+        }
+        // 新作在前；没有日期的排在最后，日期相同保持接口顺序。
+        return works.enumerated().sorted { left, right in
+            switch (left.element.date, right.element.date) {
+            case let (l?, r?) where l != r: l > r
+            case (nil, _?): false
+            case (_?, nil): true
+            default: left.offset < right.offset
+            }
+        }.map(\.element.work)
+    }
+
     func details(for candidate: MediaSearchResult, key: String) async throws -> MediaDetails {
         let path = "/3/\(candidate.mediaType.rawValue)/\(candidate.tmdbID)"
         let append = candidate.mediaType == .movie ? "credits,external_ids" : "aggregate_credits,external_ids"

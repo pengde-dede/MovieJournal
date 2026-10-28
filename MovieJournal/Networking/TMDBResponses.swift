@@ -68,3 +68,44 @@ nonisolated struct TMDBDetailsResponse: Decodable, Sendable {
 nonisolated struct TMDBAuthenticationResponse: Decodable, Sendable {
     let success: Bool
 }
+
+nonisolated struct TMDBPersonSearchResponse: Decodable, Sendable {
+    let results: [Person]
+
+    struct Person: Decodable, Sendable {
+        let id: Int
+        let name: String?
+        let knownForDepartment: String?
+        let profilePath: String?
+        let knownFor: [TMDBSearchResponse.Item]?
+
+        enum CodingKeys: String, CodingKey {
+            case id, name
+            case knownForDepartment = "known_for_department", profilePath = "profile_path", knownFor = "known_for"
+        }
+    }
+}
+
+nonisolated struct TMDBCombinedCreditsResponse: Decodable, Sendable {
+    let crew: [Credit]?
+
+    struct Credit: Decodable, Sendable {
+        let id: Int
+        let mediaType: String?
+        let title: String?
+        let name: String?
+        let originalTitle: String?
+        let originalName: String?
+        let releaseDate: String?
+        let firstAirDate: String?
+        let posterPath: String?
+        let job: String?
+        let department: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id, title, name, job, department
+            case mediaType = "media_type", originalTitle = "original_title", originalName = "original_name"
+            case releaseDate = "release_date", firstAirDate = "first_air_date", posterPath = "poster_path"
+        }
+    }
+}

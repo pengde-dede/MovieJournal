@@ -4,6 +4,19 @@ import Observation
 @MainActor
 @Observable
 final class AddRecordViewModel {
+    enum SearchMode: CaseIterable, Identifiable {
+        case title
+        case director
+
+        var id: Self { self }
+        var title: String {
+            switch self {
+            case .title: "片名"
+            case .director: "导演"
+            }
+        }
+    }
+
     var query = ""
     private(set) var results: [MediaSearchResult] = []
     private(set) var hasSearched = false
@@ -18,8 +31,16 @@ final class AddRecordViewModel {
     private(set) var isSaving = false
     private(set) var isLoadingSupplemental = false
     private(set) var supplementalMessage: String?
+    private(set) var searchMode = SearchMode.title
+    private(set) var personResults: [PersonSearchResult] = []
+    private(set) var selectedPerson: PersonSearchResult?
+    private(set) var personWorks: [CreditedWork] = []
+    private(set) var isLoadingWorks = false
+    private(set) var worksError: String?
+    private var savedWorkKeys: Set<String> = []
 
     private let catalog: any MediaCatalogServing
+    private let personCatalog: (any PersonCatalogServing)?
     private let posters: any PosterCaching
     private let store: RecordStore
     private(set) var isLoadingPoster = false
@@ -31,11 +52,18 @@ final class AddRecordViewModel {
     @ObservationIgnored private(set) var searchTask: Task<Void, Never>?
     @ObservationIgnored private(set) var detailsTask: Task<Void, Never>?
     @ObservationIgnored private(set) var supplementalTask: Task<Void, Never>?
+    private var worksRevision = 0
+    @ObservationIgnored private(set) var worksTask: Task<Void, Never>?
 
-    init(catalog: any MediaCatalogServing, store: RecordStore, posters: any PosterCaching) {
+    var canSearchByDirector: Bool { personCatalog != nil }
+
+    init(catalog: any MediaCatalogServing, store: RecordStore, posters: any PosterCaching,
+         people: (any PersonCatalogServing)? = nil) {
         self.posters = posters
         self.catalog = catalog
         self.store = store
+        // 未单独提供时，由同时支持人物搜索的目录服务（正式的 MediaCatalogService）承担。
+        personCatalog = people ?? (catalog as? any PersonCatalogServing)
     }
 
     @discardableResult
@@ -47,10 +75,13 @@ final class AddRecordViewModel {
         detailsError = nil
         saveError = nil
         results = []
+        personResults = []
+        backToPeople()
         hasSearched = true
-        let title = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty else {
-            searchError = "请输入电影或剧集的片名。"
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let mode = searchMode
+        guard !text.isEmpty else {
+            searchError = mode == .director ? "请输入导演的名字。" : "请输入电影或剧集的片名。"
             return Task {}
         }
         let revision = searchRevision
@@ -59,9 +90,16 @@ final class AddRecordViewModel {
         let task = Task { [weak self] in
             guard let self else { return }
             do {
-                let results = try await catalog.search(title: title)
-                guard !Task.isCancelled, revision == searchRevision else { return }
-                self.results = results
+                switch mode {
+                case .title:
+                    let results = try await catalog.search(title: text)
+                    guard !Task.isCancelled, revision == searchRevision else { return }
+                    self.results = results
+                case .director:
+                    let people = try await personCatalog?.searchPeople(name: text) ?? []
+                    guard !Task.isCancelled, revision == searchRevision else { return }
+                    personResults = people
+                }
                 isSearching = false
             } catch {
                 guard !Task.isCancelled, revision == searchRevision else { return }
@@ -71,6 +109,59 @@ final class AddRecordViewModel {
         }
         searchTask = task
         return task
+    }
+
+    /// 只清空左侧搜索结果；右侧已经打开的草稿保留。
+    func switchMode(to mode: SearchMode) {
+        guard mode != searchMode, mode == .title || canSearchByDirector else { return }
+        searchRevision += 1
+        searchTask?.cancel()
+        isSearching = false
+        searchError = nil
+        results = []
+        personResults = []
+        backToPeople()
+        hasSearched = false
+        searchMode = mode
+    }
+
+    @discardableResult
+    func selectPerson(_ person: PersonSearchResult) -> Task<Void, Never> {
+        backToPeople()
+        guard let personCatalog else { return Task {} }
+        selectedPerson = person
+        isLoadingWorks = true
+        let revision = worksRevision
+        let task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let works = try await personCatalog.directedWorks(personID: person.id)
+                guard !Task.isCancelled, revision == worksRevision else { return }
+                // 列出作品时读一次已保存的记录，用于标记「已添加」。
+                savedWorkKeys = Set((try? store.recordsNewestFirst())?.map(\.mediaKey) ?? [])
+                personWorks = works
+                isLoadingWorks = false
+            } catch {
+                guard !Task.isCancelled, revision == worksRevision else { return }
+                isLoadingWorks = false
+                if !(error is CancellationError) { worksError = error.localizedDescription }
+            }
+        }
+        worksTask = task
+        return task
+    }
+
+    func backToPeople() {
+        worksRevision += 1
+        worksTask?.cancel()
+        selectedPerson = nil
+        personWorks = []
+        worksError = nil
+        isLoadingWorks = false
+    }
+
+    func isSaved(_ work: CreditedWork) -> Bool {
+        savedWorkKeys.contains(work.id)
     }
 
     @discardableResult
@@ -143,6 +234,9 @@ final class AddRecordViewModel {
     func cancelPendingWork() {
         searchRevision += 1
         selectionRevision += 1
+        worksRevision += 1
+        worksTask?.cancel()
+        isLoadingWorks = false
         searchTask?.cancel()
         detailsTask?.cancel()
         supplementalTask?.cancel()

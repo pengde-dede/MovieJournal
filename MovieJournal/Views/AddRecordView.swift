@@ -32,12 +32,20 @@ struct AddRecordView: View {
 
     private var searchPane: some View {
         @Bindable var model = model
+        let isDirectorMode = model.searchMode == .director
         return VStack(alignment: .leading, spacing: 14) {
+            if model.canSearchByDirector {
+                Picker("搜索方式", selection: Binding(get: { model.searchMode }, set: { model.switchMode(to: $0) })) {
+                    ForEach(AddRecordViewModel.SearchMode.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
             HStack {
-                TextField("输入电影或剧集片名", text: $model.query)
+                TextField(isDirectorMode ? "输入导演名字，例如：诺兰" : "输入电影或剧集片名", text: $model.query)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit { model.search() }
-                    .accessibilityLabel("联网搜索片名")
+                    .accessibilityLabel(isDirectorMode ? "联网搜索导演" : "联网搜索片名")
                 Button("搜索") { model.search() }
                     .disabled(model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
@@ -52,6 +60,8 @@ struct AddRecordView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = model.searchError {
                 failure(title: "搜索失败", message: error) { model.search() }
+            } else if isDirectorMode {
+                directorResults
             } else if model.results.isEmpty {
                 ContentUnavailableView(
                     model.hasSearched ? "没有搜索结果" : "搜索电影和剧集",
@@ -59,29 +69,91 @@ struct AddRecordView: View {
                     description: Text(model.hasSearched ? "没有找到相关电影或剧集，请尝试其他片名。" : "输入片名，搜索后选择正确的作品。")
                 )
             } else {
-                List(model.results) { candidate in
-                    Button { model.select(candidate) } label: {
-                        HStack(alignment: .top, spacing: 12) {
-                            SearchPosterView(path: candidate.posterPath).frame(width: 52)
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(candidate.title).font(.headline).lineLimit(3)
-                                Text("\(candidate.releaseYear.map(String.init) ?? "年份未知") · \(candidate.mediaType.title)")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .padding(6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(model.selectedResult?.id == candidate.id ? Color.accentColor.opacity(0.12) : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .listStyle(.plain)
+                List(model.results) { candidateButton($0) }
+                    .listStyle(.plain)
             }
         }
         .padding(16)
+    }
+
+    @ViewBuilder
+    private var directorResults: some View {
+        if let person = model.selectedPerson {
+            VStack(alignment: .leading, spacing: 10) {
+                Button { model.backToPeople() } label: { Label("返回人物列表", systemImage: "chevron.left") }
+                    .buttonStyle(.link)
+                Text("\(person.name) 的作品").font(.headline)
+                if model.isLoadingWorks {
+                    ProgressView("正在获取作品…")
+                        .controlSize(.small)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let error = model.worksError {
+                    failure(title: "作品加载失败", message: error) { model.selectPerson(person) }
+                } else if model.personWorks.isEmpty {
+                    ContentUnavailableView("没有找到执导的作品", systemImage: "film",
+                        description: Text("TMDB 上没有这位影人执导的电影或主创的剧集。"))
+                } else {
+                    List(model.personWorks) { work in
+                        candidateButton(work.result, tags: [work.role.title] + (model.isSaved(work) ? ["已添加"] : []))
+                    }
+                    .listStyle(.plain)
+                }
+            }
+        } else if model.personResults.isEmpty {
+            ContentUnavailableView(
+                model.hasSearched ? "没有找到相关人物" : "按导演搜索",
+                systemImage: "person.crop.rectangle",
+                description: Text(model.hasSearched ? "试试导演的其他译名或英文名。" : "输入导演名字，选中后会列出他执导的电影和主创的剧集。")
+            )
+        } else {
+            List(model.personResults) { person in
+                Button { model.selectPerson(person) } label: {
+                    HStack(alignment: .top, spacing: 12) {
+                        SearchPosterView(path: person.profilePath).frame(width: 52)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(person.name).font(.headline).lineLimit(2)
+                            Text(person.departmentTitle)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(person.isDirector ? Color.accentColor : Color.secondary)
+                            if !person.knownFor.isEmpty {
+                                Text(person.knownFor.joined(separator: "、"))
+                                    .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            .listStyle(.plain)
+        }
+    }
+
+    private func candidateButton(_ candidate: MediaSearchResult, tags: [String] = []) -> some View {
+        Button { model.select(candidate) } label: {
+            HStack(alignment: .top, spacing: 12) {
+                SearchPosterView(path: candidate.posterPath).frame(width: 52)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(candidate.title).font(.headline).lineLimit(3)
+                    Text("\(candidate.releaseYear.map(String.init) ?? "年份未知") · \(candidate.mediaType.title)")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if !tags.isEmpty {
+                        Text(tags.joined(separator: " · "))
+                            .font(.caption.weight(.medium)).foregroundStyle(Color.accentColor)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(model.selectedResult?.id == candidate.id ? Color.accentColor.opacity(0.12) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder

@@ -148,6 +148,77 @@ struct NetworkClientTests {
         #expect(await transport.requests.isEmpty)
     }
 
+    @Test("人物搜索只请求第一页，导演排在前面且各自保留相关度顺序")
+    func peopleSearchPutsDirectorsFirst() async throws {
+        let json = #"""
+        {"results":[
+          {"id":1,"name":"诺兰·诺斯","known_for_department":"Acting","profile_path":"/north.jpg","known_for":[{"id":10,"media_type":"tv","name":"少年正义联盟"},{"id":11,"media_type":"movie","title":"神秘海域"}]},
+          {"id":525,"name":"克里斯托弗·诺兰","known_for_department":"Directing","profile_path":"/nolan.jpg","known_for":[{"id":157336,"media_type":"movie","title":"星际穿越"},{"id":27205,"media_type":"movie","title":"盗梦空间"},{"id":155,"media_type":"movie","title":"蝙蝠侠：黑暗骑士"},{"id":12,"media_type":"movie","title":"第四部"}]},
+          {"id":2,"name":"  ","known_for_department":"Directing"},
+          {"id":3,"name":"肯·诺兰","known_for_department":"Writing","known_for":[]},
+          {"id":4,"name":"阿兰·科尔诺","known_for_department":"Directing"}
+        ]}
+        """#
+        let transport = ScriptedTransport([.json(json)])
+        let people = try await TMDBClient(transport: transport).searchPeople(name: "诺兰", key: "fake-key")
+        #expect(people.map(\.id) == [525, 4, 1, 3])
+        #expect(people[0].knownFor == ["星际穿越", "盗梦空间", "蝙蝠侠：黑暗骑士"])
+        #expect(people[0].departmentTitle == "导演")
+        #expect(people[0].profilePath == "/nolan.jpg")
+        #expect(people[2].knownFor == ["少年正义联盟", "神秘海域"])
+        #expect(people[2].departmentTitle == "演员")
+        #expect(people[3].knownFor.isEmpty)
+        let url = try #require(await transport.requests.first?.url)
+        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        #expect(url.path == "/3/search/person")
+        #expect(query("query", components) == "诺兰")
+        #expect(query("language", components) == "zh-CN")
+        #expect(query("page", components) == "1")
+        #expect(query("include_adult", components) == "false")
+        #expect(query("api_key", components) == "fake-key")
+    }
+
+    @Test("人物作品只保留执导的电影和主创的剧集，去重后从新到旧排列")
+    func directedWorksFiltersSortsAndDeduplicates() async throws {
+        let json = #"""
+        {"cast":[{"id":900,"media_type":"movie","title":"客串电影","release_date":"2024-01-01"}],
+         "crew":[
+          {"id":1,"media_type":"movie","title":"老片","original_title":"Old","release_date":"1998-04-24","job":"Director","department":"Directing","poster_path":"/old.jpg"},
+          {"id":2,"media_type":"movie","title":"新片","original_title":"New","release_date":"2023-07-19","job":"Director","department":"Directing"},
+          {"id":2,"media_type":"movie","title":"新片","original_title":"New","release_date":"2023-07-19","job":"Director","department":"Directing"},
+          {"id":2,"media_type":"movie","title":"新片","release_date":"2023-07-19","job":"Writer","department":"Writing"},
+          {"id":3,"media_type":"movie","title":"只做编剧","release_date":"2010-01-01","job":"Screenplay","department":"Writing"},
+          {"id":4,"media_type":"movie","title":"","original_title":"Untitled Project","release_date":"","job":"Director","department":"Directing"},
+          {"id":1396,"media_type":"tv","name":"绝命毒师","original_name":"Breaking Bad","first_air_date":"2008-01-20","job":"Creator","department":"Creator"},
+          {"id":1396,"media_type":"tv","name":"绝命毒师","first_air_date":"2008-01-20","job":"Director","department":"Directing"},
+          {"id":5,"media_type":"tv","name":"只导过单集","first_air_date":"2015-01-01","job":"Director","department":"Directing"},
+          {"id":2,"media_type":"tv","name":"同编号剧集","first_air_date":"2001-01-01","job":"Creator","department":"Creator"}
+         ]}
+        """#
+        let transport = ScriptedTransport([.json(json)])
+        let works = try await TMDBClient(transport: transport).directedWorks(personID: 525, key: "fake-key")
+        #expect(works.map(\.id) == ["movie:2", "tv:1396", "tv:2", "movie:1", "movie:4"])
+        #expect(works.map(\.role) == [.director, .creator, .creator, .director, .director])
+        #expect(works[0].result.releaseYear == 2023)
+        #expect(works[1].result.originalTitle == "Breaking Bad")
+        #expect(works[3].result.posterPath == "/old.jpg")
+        #expect(works[4].result.title == "Untitled Project")
+        #expect(works[4].result.releaseYear == nil)
+        let url = try #require(await transport.requests.first?.url)
+        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        #expect(url.path == "/3/person/525/combined_credits")
+        #expect(query("language", components) == "zh-CN")
+    }
+
+    @Test("按导演搜索同样需要 TMDB Key，缺少时不发请求")
+    func peopleSearchRequiresKey() async throws {
+        let transport = ScriptedTransport([])
+        let catalog = MediaCatalogService(keychain: MemoryKeychain(), tmdb: TMDBClient(transport: transport))
+        await #expect(throws: APIError.missingKey(.tmdb)) { try await catalog.searchPeople(name: "诺兰") }
+        await #expect(throws: APIError.missingKey(.tmdb)) { try await catalog.directedWorks(personID: 525) }
+        #expect(await transport.requests.isEmpty)
+    }
+
     private func query(_ key: String, _ components: URLComponents) -> String? {
         components.queryItems?.first { $0.name == key }?.value
     }

@@ -6,7 +6,13 @@ nonisolated protocol MediaCatalogServing: Sendable {
     func supplementalRatings(imdbID: String?) async throws -> SupplementalRatingsResult
 }
 
-nonisolated struct MediaCatalogService: MediaCatalogServing {
+// 按导演搜索单独成协议，不支持它的目录服务仍可只按片名搜索。
+nonisolated protocol PersonCatalogServing: Sendable {
+    func searchPeople(name: String) async throws -> [PersonSearchResult]
+    func directedWorks(personID: Int) async throws -> [CreditedWork]
+}
+
+nonisolated struct MediaCatalogService: MediaCatalogServing, PersonCatalogServing {
     let keychain: any KeychainStoring
     let tmdb: TMDBClient
     let omdb: OMDbClient
@@ -23,6 +29,14 @@ nonisolated struct MediaCatalogService: MediaCatalogServing {
 
     func details(for candidate: MediaSearchResult) async throws -> MediaDetails {
         try await tmdb.details(for: candidate, key: requiredTMDBKey())
+    }
+
+    func searchPeople(name: String) async throws -> [PersonSearchResult] {
+        try await tmdb.searchPeople(name: name, key: requiredTMDBKey())
+    }
+
+    func directedWorks(personID: Int) async throws -> [CreditedWork] {
+        try await tmdb.directedWorks(personID: personID, key: requiredTMDBKey())
     }
 
     func supplementalRatings(imdbID: String?) async throws -> SupplementalRatingsResult {

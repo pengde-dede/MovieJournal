@@ -84,6 +84,26 @@ struct LiveAPISmokeTests {
         #expect(await offline.requests.isEmpty)
     }
 
+    @Test("真实按导演搜索：中文名找到导演，作品列表包含代表作", .timeLimit(.minutes(1)))
+    func directorSearchFindsKnownDirectors() async throws {
+        guard let key = try await KeychainService().read(.tmdb).nonEmpty else { throw APIError.missingKey(.tmdb) }
+        let client = TMDBClient(transport: HTTPClient())
+        // (搜索词, 导演的 TMDB 编号；nil 表示只要求排第一的是导演, 应包含的作品)
+        let cases: [(String, Int?, String)] = [
+            ("黑泽明", 5026, "movie:346"), ("诺兰", 525, "movie:27205"),
+            ("李安", nil, "movie:146"), ("文斯·吉利根", 66633, "tv:1396")
+        ]
+        for (name, personID, expectedWork) in cases {
+            let people = try await client.searchPeople(name: name, key: key)
+            let person = try #require(personID.map { id in people.first { $0.id == id } } ?? people.first)
+            if personID == nil || person.isDirector { #expect(people.first == person, "\(name) 应排在第一") }
+            let works = try await client.directedWorks(personID: person.id, key: key)
+            #expect(works.contains { $0.id == expectedWork }, "\(name) 的作品应包含 \(expectedWork)")
+            // 测试运行在应用进程中，print 不会出现在 xcodebuild 输出里；NSLog 可在「控制台」或 log show 中查看。
+            NSLog("%@", "[导演搜索验收] \(name) → \(people.prefix(3).map { "\($0.name)（\($0.departmentTitle)）" }) · 作品 \(works.count) 部 · 前三：\(works.prefix(3).map { "\($0.result.title) \($0.result.releaseYear.map(String.init) ?? "")" })")
+        }
+    }
+
     private func saveTemporaryRecord(_ details: MediaDetails, posterFilename: String, in directory: URL) throws {
         let container = try PersistenceController.makeContainer(in: directory)
         var draft = RecordDraft(details: details)

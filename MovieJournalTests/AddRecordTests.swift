@@ -153,6 +153,79 @@ struct AddRecordTests {
         #expect(record.shortReview == "补充评分失败也保留")
     }
 
+    @Test("按导演搜索：搜人、选人、列出作品并标记已添加，选中作品后走原有填写流程")
+    func directorSearchLeadsToExistingAddFlow() async throws {
+        let fixture = try storeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        try fixture.store.insert(ViewingRecord(tmdbID: Fixtures.series.tmdbID, mediaType: .tv, title: "绝命毒师", myRating: 9, watchedSeason: 1))
+        let people = PeopleCatalog()
+        let model = AddRecordViewModel(catalog: ControlledCatalog(), store: fixture.store, posters: StubPosterCache(), people: people)
+        #expect(model.canSearchByDirector)
+        model.switchMode(to: .director)
+        model.query = "  "
+        await model.search().value
+        #expect(model.searchError == "请输入导演的名字。")
+        model.query = " 吉利根 "
+        await model.search().value
+        #expect(model.searchError == nil)
+        #expect(model.personResults == [PeopleCatalog.director])
+        #expect(await people.searchedNames == ["吉利根"])
+
+        await model.selectPerson(PeopleCatalog.director).value
+        #expect(model.selectedPerson == PeopleCatalog.director)
+        #expect(model.personWorks.map(\.id) == [Fixtures.series.id, Fixtures.movie.id])
+        #expect(model.isSaved(model.personWorks[0]))
+        #expect(!model.isSaved(model.personWorks[1]))
+
+        await model.select(Fixtures.movie).value
+        await model.posterTask?.value
+        await model.supplementalTask?.value
+        #expect(model.draft?.details.tmdbID == Fixtures.movie.tmdbID)
+        // 返回人物列表只换左侧列表，已经打开的草稿保留。
+        model.backToPeople()
+        #expect(model.selectedPerson == nil)
+        #expect(model.personWorks.isEmpty)
+        #expect(model.personResults == [PeopleCatalog.director])
+        #expect(model.draft?.details.tmdbID == Fixtures.movie.tmdbID)
+    }
+
+    @Test("离开作品列表后旧请求晚到不覆盖；切换搜索方式清空人物结果")
+    func staleWorksAndModeSwitchAreIgnored() async throws {
+        let fixture = try storeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        let people = PeopleCatalog(holdWorks: true)
+        let model = AddRecordViewModel(catalog: ControlledCatalog(), store: fixture.store, posters: StubPosterCache(), people: people)
+        model.switchMode(to: .director)
+        model.query = "吉利根"
+        await model.search().value
+        let old = model.selectPerson(PeopleCatalog.director)
+        await people.waitForWorks()
+        #expect(model.isLoadingWorks)
+        model.backToPeople()
+        await people.finishWorks()
+        await old.value
+        #expect(model.selectedPerson == nil)
+        #expect(model.personWorks.isEmpty)
+        #expect(!model.isLoadingWorks)
+
+        model.switchMode(to: .title)
+        #expect(model.searchMode == .title)
+        #expect(model.personResults.isEmpty)
+        #expect(!model.hasSearched)
+    }
+
+    @Test("只有支持人物搜索的服务才提供导演模式")
+    func directorModeRequiresPersonCatalog() throws {
+        let fixture = try storeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        let plain = AddRecordViewModel(catalog: ControlledCatalog(), store: fixture.store, posters: StubPosterCache())
+        #expect(!plain.canSearchByDirector)
+        plain.switchMode(to: .director)
+        #expect(plain.searchMode == .title)
+        let real = AddRecordViewModel(catalog: MediaCatalogService(keychain: MemoryKeychain()), store: fixture.store, posters: StubPosterCache())
+        #expect(real.canSearchByDirector)
+    }
+
     private func storeFixture() throws -> (directory: URL, container: ModelContainer, store: RecordStore) {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("MovieJournalAddTests-\(UUID().uuidString)", isDirectory: true)
         let container = try PersistenceController.makeContainer(in: directory)
@@ -208,4 +281,30 @@ private actor ControlledCatalog: MediaCatalogServing {
     func finishSearch() { searchContinuation?.resume(returning: [Fixtures.movie]); searchContinuation = nil }
     func finishDetails() { detailsContinuation?.resume(returning: Fixtures.details()); detailsContinuation = nil }
     func finishSupplemental() { supplementalContinuation?.resume(returning: .loaded(PlatformRatings(imdb: 9.3, rottenTomatoes: 89))); supplementalContinuation = nil }
+}
+
+private actor PeopleCatalog: PersonCatalogServing {
+    static let director = PersonSearchResult(id: 66633, name: "文斯·吉利根", department: "Writing", profilePath: nil, knownFor: ["绝命毒师"])
+    private let holdWorks: Bool
+    private(set) var searchedNames: [String] = []
+    private var worksContinuation: CheckedContinuation<[CreditedWork], Never>?
+    private var worksWaiter: CheckedContinuation<Void, Never>?
+    init(holdWorks: Bool = false) { self.holdWorks = holdWorks }
+    func searchPeople(name: String) async throws -> [PersonSearchResult] {
+        searchedNames.append(name)
+        return [Self.director]
+    }
+    func directedWorks(personID: Int) async throws -> [CreditedWork] {
+        if !holdWorks {
+            return [CreditedWork(result: Fixtures.series, role: .creator), CreditedWork(result: Fixtures.movie, role: .director)]
+        }
+        return await withCheckedContinuation {
+            worksContinuation = $0; worksWaiter?.resume(); worksWaiter = nil
+        }
+    }
+    func waitForWorks() async {
+        if worksContinuation != nil { return }
+        await withCheckedContinuation { worksWaiter = $0 }
+    }
+    func finishWorks() { worksContinuation?.resume(returning: [CreditedWork(result: Fixtures.movie, role: .director)]); worksContinuation = nil }
 }
