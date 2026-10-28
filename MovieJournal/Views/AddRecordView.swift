@@ -62,7 +62,7 @@ struct AddRecordView: View {
                 List(model.results) { candidate in
                     Button { model.select(candidate) } label: {
                         HStack(alignment: .top, spacing: 12) {
-                            PosterView(path: candidate.posterPath, small: true).frame(width: 52)
+                            SearchPosterView(path: candidate.posterPath).frame(width: 52)
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(candidate.title).font(.headline).lineLimit(3)
                                 Text("\(candidate.releaseYear.map(String.init) ?? "年份未知") · \(candidate.mediaType.title)")

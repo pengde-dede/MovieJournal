@@ -78,12 +78,13 @@ struct LibraryTests {
         await model.cacheSavedPosters([target], cache: cache, store: fixture.store)
         #expect(model.posterMessage != nil)
         #expect(record.posterFilename == nil)
+        #expect(model.posterReloadVersions.isEmpty)
         #expect(model.matchingRecords(in: try fixture.store.recordsNewestFirst()).count == 1)
-        let previousReload = model.posterReloadToken
+        let previousReload = model.posterReloadVersions
         await model.cacheSavedPosters([target], cache: cache, store: fixture.store)
         #expect(model.posterMessage == nil)
         #expect(record.posterFilename != nil)
-        #expect(model.posterReloadToken > previousReload)
+        #expect(model.posterReloadVersions != previousReload)
         #expect(record.myRating == 8 && record.watchedSeason == 2)
     }
 

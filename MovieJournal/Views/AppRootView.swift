@@ -4,7 +4,7 @@ import SwiftUI
 struct AppRootView: View {
     let persistence: PersistenceController
     let catalog: any MediaCatalogServing
-    let posters: any PosterCaching
+    let posters: any PosterFileManaging
     @Environment(SettingsViewModel.self) private var settings
     @Environment(\.scenePhase) private var scenePhase
 

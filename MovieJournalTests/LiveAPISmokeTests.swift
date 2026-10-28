@@ -20,10 +20,16 @@ struct LiveAPISmokeTests {
 
         let posterDirectory = directory.appendingPathComponent("Posters", isDirectory: true)
         let posterCache = PosterCache(directory: posterDirectory, transport: transport)
+        let thumbnails = PosterThumbnailCache(transport: transport)
         let cases: [(String, MediaType, Int)] = [("肖申克的救赎", .movie, 278), ("绝命毒师", .tv, 1396)]
         for (title, type, identifier) in cases {
             let results = try await client.search(title: title, key: key)
             let candidate = try #require(results.first { $0.tmdbID == identifier && $0.mediaType == type })
+            let before = (try? FileManager.default.contentsOfDirectory(atPath: posterDirectory.path)) ?? []
+            let thumbnail = try await thumbnails.load(path: candidate.posterPath)
+            #expect(NSImage(data: thumbnail) != nil)
+            let after = (try? FileManager.default.contentsOfDirectory(atPath: posterDirectory.path)) ?? []
+            #expect(Set(before) == Set(after))
             let details = try await client.details(for: candidate, key: key)
             #expect(!details.title.isEmpty)
             #expect(!details.originalTitle.isEmpty)
@@ -40,6 +46,8 @@ struct LiveAPISmokeTests {
         #expect(records.count == 2)
         #expect(Set(records.map(\.mediaKey)) == ["movie:278", "tv:1396"])
         #expect(records.allSatisfy { !$0.creatorNames.isEmpty && $0.castNames.count == 5 && $0.tmdbRating != nil })
+        let referenced = Set(records.compactMap(\.posterFilename))
+        #expect(try await posterCache.cleanupAtStartup(referencedFilenames: referenced) == 0)
         let offline = PosterTransport([])
         let reopenedPosters = PosterCache(directory: posterDirectory, transport: offline)
         for record in records {

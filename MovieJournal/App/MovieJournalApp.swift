@@ -5,7 +5,8 @@ struct MovieJournalApp: App {
     @State private var persistence = PersistenceController()
     @State private var settings: SettingsViewModel
     private let catalog: any MediaCatalogServing
-    private let posters: any PosterCaching
+    private let posters: any PosterFileManaging
+    private let thumbnails: any PosterThumbnailLoading
 
     init() {
         let keychain = KeychainService()
@@ -13,6 +14,7 @@ struct MovieJournalApp: App {
         let tmdb = TMDBClient(transport: transport)
         let omdb = OMDbClient(transport: transport)
         posters = PosterCache(transport: transport)
+        thumbnails = PosterThumbnailCache(transport: transport)
         catalog = MediaCatalogService(keychain: keychain, tmdb: tmdb, omdb: omdb)
         _settings = State(initialValue: SettingsViewModel(keychain: keychain, validator: APIKeyValidator(tmdb: tmdb, omdb: omdb)))
     }
@@ -20,6 +22,7 @@ struct MovieJournalApp: App {
     var body: some Scene {
         WindowGroup("观影记录") {
             AppRootView(persistence: persistence, catalog: catalog, posters: posters)
+                .environment(\.posterThumbnails, thumbnails)
                 .environment(settings)
                 .environment(\.locale, Locale(identifier: "zh_CN"))
         }

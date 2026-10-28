@@ -12,10 +12,12 @@ struct PosterCacheTests {
         let first = try await PosterCache(directory: directory, transport: online).load(path: "/poster.jpg", filename: nil)
         #expect(try Data(contentsOf: directory.appendingPathComponent(first.filename)) == PosterFixtures.png)
         #expect(!first.filename.contains("/"))
+        #expect(first.wasWritten)
         let offline = PosterTransport([])
         let reopened = PosterCache(directory: directory, transport: offline)
         let byPath = try await reopened.load(path: "/poster.jpg", filename: nil)
         let byFilename = try await reopened.load(path: nil, filename: first.filename)
+        #expect(!byPath.wasWritten && !byFilename.wasWritten)
         #expect(byPath.data == first.data)
         #expect(byFilename.data == first.data)
         #expect(await offline.requests.isEmpty)
@@ -89,6 +91,27 @@ struct PosterCacheTests {
         await #expect(throws: PosterCacheError.noPoster) { try await cache.load(path: nil, filename: "../outside.image") }
         await #expect(throws: PosterCacheError.noPoster) { try await cache.load(path: nil, filename: nil) }
         #expect(await transport.requests.isEmpty)
+    }
+
+    @Test("清理跳过正在下载的文件，下载结束后无引用时可以移除")
+    func cleanupProtectsInFlightDownload() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let filename = try #require(PosterCache.filename(for: "/pending.jpg"))
+        let file = directory.appendingPathComponent(filename)
+        try Data("damaged".utf8).write(to: file)
+        let transport = HeldImageTransport()
+        let cache = PosterCache(directory: directory, transport: transport)
+        let pending = Task { try await cache.load(path: "/pending.jpg", filename: filename) }
+        await transport.waitUntilRequested()
+        #expect(try await cache.removeUnreferencedFiles(referencedFilenames: []) == 0)
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        await transport.finish()
+        let result = try await pending.value
+        #expect(result.wasWritten)
+        #expect(try await cache.removeUnreferencedFiles(referencedFilenames: []) == 1)
+        #expect(!FileManager.default.fileExists(atPath: file.path))
     }
 
     private func temporaryDirectory() -> URL {

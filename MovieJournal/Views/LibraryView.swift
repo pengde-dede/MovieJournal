@@ -3,7 +3,7 @@ import SwiftUI
 
 struct LibraryView: View {
     let catalog: any MediaCatalogServing
-    let posters: any PosterCaching
+    let posters: any PosterFileManaging
     @Environment(\.modelContext) private var context
     @Query(sort: \ViewingRecord.createdAt, order: .reverse) private var records: [ViewingRecord]
     @State private var model = LibraryViewModel()
@@ -58,7 +58,8 @@ struct LibraryView: View {
                     SettingsLink { Label("设置", systemImage: "gearshape") }.help("设置")
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    Button("添加观影记录", systemImage: "plus") { isShowingAdd = true }.help("添加观影记录")
+                    Button("添加观影记录", systemImage: "plus") { isShowingAdd = true }
+                        .help("添加观影记录").disabled(model.isPreparingLibrary)
                 }
             }
             .sheet(isPresented: $isShowingAdd) {
@@ -69,7 +70,7 @@ struct LibraryView: View {
             }
         }
         .environment(\.posterCache, posters)
-        .environment(\.posterReloadToken, model.posterReloadToken)
+        .environment(\.posterReloadVersions, model.posterReloadVersions)
         .task(id: PosterBatchID(records: records.map(\.id), retry: posterRetry)) {
             let targets = records.map { SavedPosterTarget(recordID: $0.id, path: $0.posterPath, filename: $0.posterFilename) }
             await model.cacheSavedPosters(targets, cache: posters, store: RecordStore(context: context))
@@ -78,6 +79,12 @@ struct LibraryView: View {
 
     @ViewBuilder
     private var posterStatus: some View {
+        if let message = model.cleanupMessage {
+            Label(message, systemImage: "exclamationmark.triangle")
+                .font(.callout).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 28).padding(.vertical, 10)
+        }
         if model.isCachingPosters {
             HStack {
                 ProgressView().controlSize(.small)
@@ -105,7 +112,8 @@ struct LibraryView: View {
             } description: {
                 Text("把看过的电影和剧集留在这里。")
             } actions: {
-                Button("添加观影记录", systemImage: "plus") { isShowingAdd = true }.buttonStyle(.borderedProminent)
+                Button("添加观影记录", systemImage: "plus") { isShowingAdd = true }
+                    .buttonStyle(.borderedProminent).disabled(model.isPreparingLibrary)
             }
         } else if matching.isEmpty {
             ContentUnavailableView {

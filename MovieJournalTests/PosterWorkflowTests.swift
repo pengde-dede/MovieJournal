@@ -76,12 +76,12 @@ struct PosterWorkflowTests {
         await cache.waitForMovie()
         task.cancel()
         await model.cacheSavedPosters([], cache: cache, store: fixture.store)
-        let currentReload = model.posterReloadToken
+        let currentReload = model.posterReloadVersions
         await cache.finishMovie()
         await task.value
         #expect(record.posterFilename == nil)
         #expect(!model.isCachingPosters && model.totalPosters == 0 && model.completedPosters == 0)
-        #expect(model.posterReloadToken == currentReload)
+        #expect(model.posterReloadVersions == currentReload)
         #expect(model.posterMessage == nil)
     }
 
@@ -98,7 +98,11 @@ private nonisolated struct ImmediateCatalog: MediaCatalogServing {
     func supplementalRatings(imdbID: String?) async throws -> SupplementalRatingsResult { .notConfigured }
 }
 
-private actor ControlledPosterCache: PosterCaching {
+private actor ControlledPosterCache: PosterFileManaging {
+    func existingFilename(path: String?, filename: String?) -> String? { nil }
+    func readData(filename: String) throws -> Data { PosterFixtures.png }
+    func cleanupAtStartup(referencedFilenames: Set<String>) throws -> Int { 0 }
+    func removeUnreferencedFiles(referencedFilenames: Set<String>) throws -> Int { 0 }
     private var continuation: CheckedContinuation<CachedPoster, Never>?
     private var waiter: CheckedContinuation<Void, Never>?
     func load(path: String?, filename: String?) async throws -> CachedPoster {
