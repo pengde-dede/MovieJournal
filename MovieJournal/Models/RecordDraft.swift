@@ -1,6 +1,8 @@
 import Foundation
 
 struct RecordDraft {
+    // 只标识本次编辑，用于隔离旧表单的迟到事件，不写入数据库。
+    let editingID = UUID()
     var details: MediaDetails
     var watchedOn: Date = .now
     var myRating: Int?

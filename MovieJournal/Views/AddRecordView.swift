@@ -104,7 +104,7 @@ struct AddRecordView: View {
                 if let candidate = model.selectedResult { model.select(candidate) }
             }
             .padding()
-        } else if let draft = Binding<RecordDraft>($model.draft) {
+        } else if let draft = RecordDraftBinding.make($model.draft) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     MediaInformationView(details: draft.wrappedValue.details)
