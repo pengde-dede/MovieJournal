@@ -16,7 +16,7 @@ struct RecordDraftBindingTests {
             keychain: MemoryKeychain([.tmdb: "fake-tmdb"]),
             tmdb: TMDBClient(transport: ScriptedTransport([.json(#"{"results":[]}"#)]))
         )
-        let model = AddRecordViewModel(catalog: catalog, store: RecordStore(context: container.mainContext))
+        let model = AddRecordViewModel(catalog: catalog, store: RecordStore(context: container.mainContext), posters: StubPosterCache())
         model.draft = RecordDraft(details: Fixtures.details(Fixtures.series))
         let source = Binding<RecordDraft?>(get: { model.draft }, set: { model.draft = $0 })
         let editor = try #require(RecordDraftBinding.make(source))

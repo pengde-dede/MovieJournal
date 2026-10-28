@@ -21,7 +21,7 @@ struct RecordDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                MediaInformationView(details: details)
+                MediaInformationView(details: details, posterFilename: record.posterFilename)
                 GroupBox("我的观影记录") {
                     VStack(alignment: .leading, spacing: 14) {
                         LabeledContent(record.mediaType == .tv ? "最近观看日期" : "观看日期") {

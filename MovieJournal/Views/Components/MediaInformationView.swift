@@ -2,11 +2,12 @@ import SwiftUI
 
 struct MediaInformationView: View {
     let details: MediaDetails
+    var posterFilename: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(alignment: .top, spacing: 22) {
-                PosterView(path: details.posterPath)
+                PosterView(path: details.posterPath, filename: posterFilename)
                     .frame(width: 170)
                 VStack(alignment: .leading, spacing: 12) {
                     Text(details.title).font(.title.bold())

@@ -11,7 +11,7 @@ struct AddRecordTests {
         let fixture = try storeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
         let catalog = ControlledCatalog()
-        let model = AddRecordViewModel(catalog: catalog, store: fixture.store)
+        let model = AddRecordViewModel(catalog: catalog, store: fixture.store, posters: StubPosterCache())
         model.query = "旧搜索"
         let old = model.search()
         await catalog.waitForSearch()
@@ -28,10 +28,11 @@ struct AddRecordTests {
         let fixture = try storeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
         let catalog = ControlledCatalog(holdMovieDetails: true)
-        let model = AddRecordViewModel(catalog: catalog, store: fixture.store)
+        let model = AddRecordViewModel(catalog: catalog, store: fixture.store, posters: StubPosterCache())
         let old = model.select(Fixtures.movie)
         await catalog.waitForDetails()
         await model.select(Fixtures.series).value
+        await model.posterTask?.value
         await catalog.finishDetails()
         await old.value
         await model.supplementalTask?.value
@@ -44,8 +45,9 @@ struct AddRecordTests {
         let fixture = try storeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
         let catalog = ControlledCatalog(holdSupplemental: true)
-        let model = AddRecordViewModel(catalog: catalog, store: fixture.store)
+        let model = AddRecordViewModel(catalog: catalog, store: fixture.store, posters: StubPosterCache())
         await model.select(Fixtures.movie).value
+        await model.posterTask?.value
         await catalog.waitForSupplemental()
         #expect(model.isLoadingSupplemental)
         model.draft?.myRating = 9
@@ -69,8 +71,9 @@ struct AddRecordTests {
         let original = ViewingRecord(tmdbID: 278, mediaType: .movie, title: "原记录", myRating: 10, shortReview: "保留")
         try fixture.store.insert(original)
         let catalog = ControlledCatalog()
-        let model = AddRecordViewModel(catalog: catalog, store: fixture.store)
+        let model = AddRecordViewModel(catalog: catalog, store: fixture.store, posters: StubPosterCache())
         await model.select(Fixtures.movie).value
+        await model.posterTask?.value
         #expect(model.duplicateRecordID == original.id)
         #expect(model.draft == nil)
         #expect(await catalog.detailsCount == 0)
@@ -82,8 +85,9 @@ struct AddRecordTests {
     func cancellingDoesNotPersistDraft() async throws {
         let fixture = try storeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
-        let model = AddRecordViewModel(catalog: ControlledCatalog(), store: fixture.store)
+        let model = AddRecordViewModel(catalog: ControlledCatalog(), store: fixture.store, posters: StubPosterCache())
         await model.select(Fixtures.series).value
+        await model.posterTask?.value
         await model.supplementalTask?.value
         #expect(model.draft?.validationMessage != nil)
         model.draft?.myRating = 8
@@ -98,8 +102,9 @@ struct AddRecordTests {
     func savedSeriesSurvivesReopening() async throws {
         let fixture = try storeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
-        let model = AddRecordViewModel(catalog: ControlledCatalog(), store: fixture.store)
+        let model = AddRecordViewModel(catalog: ControlledCatalog(), store: fixture.store, posters: StubPosterCache())
         await model.select(Fixtures.series).value
+        await model.posterTask?.value
         await model.supplementalTask?.value
         model.draft?.myRating = 8
         model.draft?.watchedSeason = 3
@@ -128,8 +133,9 @@ struct AddRecordTests {
             keychain: MemoryKeychain([.tmdb: "fake-tmdb", .omdb: "fake-invalid"]),
             tmdb: TMDBClient(transport: transport), omdb: OMDbClient(transport: transport)
         )
-        let model = AddRecordViewModel(catalog: catalog, store: fixture.store)
+        let model = AddRecordViewModel(catalog: catalog, store: fixture.store, posters: StubPosterCache())
         await model.select(Fixtures.movie).value
+        await model.posterTask?.value
         await model.supplementalTask?.value
         #expect(model.draft != nil)
         #expect(model.supplementalMessage != nil)

@@ -6,8 +6,8 @@ struct AddRecordView: View {
     @State private var model: AddRecordViewModel
     let openRecord: (UUID) -> Void
 
-    init(catalog: any MediaCatalogServing, store: RecordStore, openRecord: @escaping (UUID) -> Void) {
-        _model = State(initialValue: AddRecordViewModel(catalog: catalog, store: store))
+    init(catalog: any MediaCatalogServing, store: RecordStore, posters: any PosterCaching, openRecord: @escaping (UUID) -> Void) {
+        _model = State(initialValue: AddRecordViewModel(catalog: catalog, store: store, posters: posters))
         self.openRecord = openRecord
     }
 
@@ -107,7 +107,7 @@ struct AddRecordView: View {
         } else if let draft = RecordDraftBinding.make($model.draft) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    MediaInformationView(details: draft.wrappedValue.details)
+                    MediaInformationView(details: draft.wrappedValue.details, posterFilename: draft.wrappedValue.posterFilename)
                     if model.isLoadingSupplemental {
                         HStack {
                             ProgressView().controlSize(.small)
@@ -116,6 +116,15 @@ struct AddRecordView: View {
                         }
                     } else if let message = model.supplementalMessage {
                         Text(message).font(.callout).foregroundStyle(.secondary)
+                    }
+                    if model.isLoadingPoster {
+                        HStack {
+                            ProgressView().controlSize(.small)
+                            Text("正在将海报保存到本机…").font(.callout).foregroundStyle(.secondary)
+                        }
+                    } else if let message = model.posterMessage {
+                        Text(message).font(.callout).foregroundStyle(.secondary)
+                        Button("重试海报") { model.retryPoster() }
                     }
                     RecordEditorView(draft: draft)
                     if let error = model.saveError {
@@ -128,7 +137,7 @@ struct AddRecordView: View {
                             if let id = model.saveRecord() { openRecord(id) }
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(model.isSaving || draft.wrappedValue.validationMessage != nil)
+                        .disabled(model.isSaving || model.isLoadingPoster || draft.wrappedValue.validationMessage != nil)
                     }
                 }
                 .padding(24)

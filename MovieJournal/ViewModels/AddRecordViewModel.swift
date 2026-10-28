@@ -20,7 +20,11 @@ final class AddRecordViewModel {
     private(set) var supplementalMessage: String?
 
     private let catalog: any MediaCatalogServing
+    private let posters: any PosterCaching
     private let store: RecordStore
+    private(set) var isLoadingPoster = false
+    private(set) var posterMessage: String?
+    @ObservationIgnored private(set) var posterTask: Task<Void, Never>?
     private var searchRevision = 0
     private var selectionRevision = 0
     private var savedRecordID: UUID?
@@ -28,7 +32,8 @@ final class AddRecordViewModel {
     @ObservationIgnored private(set) var detailsTask: Task<Void, Never>?
     @ObservationIgnored private(set) var supplementalTask: Task<Void, Never>?
 
-    init(catalog: any MediaCatalogServing, store: RecordStore) {
+    init(catalog: any MediaCatalogServing, store: RecordStore, posters: any PosterCaching) {
+        self.posters = posters
         self.catalog = catalog
         self.store = store
     }
@@ -73,6 +78,9 @@ final class AddRecordViewModel {
         selectionRevision += 1
         detailsTask?.cancel()
         supplementalTask?.cancel()
+        posterTask?.cancel()
+        isLoadingPoster = false
+        posterMessage = nil
         isLoadingSupplemental = false
         supplementalMessage = nil
         selectedResult = candidate
@@ -100,6 +108,7 @@ final class AddRecordViewModel {
                 draft = RecordDraft(details: details)
                 isLoadingDetails = false
                 loadSupplemental(imdbID: details.imdbID, revision: revision)
+                loadPoster(path: details.posterPath, revision: revision)
             } catch {
                 guard !Task.isCancelled, revision == selectionRevision else { return }
                 isLoadingDetails = false
@@ -111,7 +120,7 @@ final class AddRecordViewModel {
     }
 
     func saveRecord() -> UUID? {
-        guard savedRecordID == nil, !isSaving, let draft else { return nil }
+        guard savedRecordID == nil, !isSaving, !isLoadingPoster, let draft else { return nil }
         saveError = nil
         isSaving = true
         do {
@@ -140,6 +149,35 @@ final class AddRecordViewModel {
         isSearching = false
         isLoadingDetails = false
         isLoadingSupplemental = false
+        posterTask?.cancel()
+        isLoadingPoster = false
+        posterMessage = nil
+    }
+
+    func retryPoster() {
+        guard let draft, !isLoadingPoster, !isSaving else { return }
+        loadPoster(path: draft.details.posterPath, revision: selectionRevision)
+    }
+
+    private func loadPoster(path: String?, revision: Int) {
+        posterMessage = nil
+        guard path != nil else { return }
+        isLoadingPoster = true
+        posterTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let poster = try await posters.load(path: path, filename: nil)
+                guard !Task.isCancelled, revision == selectionRevision, !isSaving, draft != nil else { return }
+                draft?.posterFilename = poster.filename
+            } catch {
+                guard !Task.isCancelled, revision == selectionRevision else { return }
+                if !(error is CancellationError) {
+                    posterMessage = "海报未能缓存：\(error.localizedDescription) 仍可保存，之后可在资料库重试。"
+                }
+            }
+            guard revision == selectionRevision else { return }
+            isLoadingPoster = false
+        }
     }
 
     private func loadSupplemental(imdbID: String?, revision: Int) {

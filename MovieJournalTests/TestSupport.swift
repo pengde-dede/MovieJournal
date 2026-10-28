@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 @testable import MovieJournal
 
 nonisolated enum StubReply: Sendable {
@@ -49,5 +50,45 @@ nonisolated enum Fixtures {
             "credits": ["cast": cast, "crew": [["id": 100, "name": "Frank Darabont", "job": "Director"], ["id": 101, "name": "其他工作人员", "job": "Editor"]]]
         ]
         return String(decoding: try JSONSerialization.data(withJSONObject: body), as: UTF8.self)
+    }
+}
+
+// 测试中以系统 ImageIO 生成一张很小的 PNG，不访问真实网络。
+nonisolated enum PosterFixtures {
+    static let png: Data = {
+        let pixels = Data([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255])
+        guard let provider = CGDataProvider(data: pixels as CFData),
+              let image = CGImage(width: 2, height: 2, bitsPerComponent: 8, bitsPerPixel: 32,
+                  bytesPerRow: 8, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                  provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent) else {
+            preconditionFailure("无法生成测试图片")
+        }
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(output, "public.png" as CFString, 1, nil) else {
+            preconditionFailure("无法生成测试 PNG")
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        precondition(CGImageDestinationFinalize(destination))
+        return output as Data
+    }()
+}
+
+nonisolated struct StubPosterCache: PosterCaching {
+    var failure: PosterCacheError? = nil
+    func load(path: String?, filename: String?) async throws -> CachedPoster {
+        if let failure { throw failure }
+        guard let name = filename ?? PosterCache.filename(for: path) else { throw PosterCacheError.noPoster }
+        return CachedPoster(data: PosterFixtures.png, filename: name)
+    }
+}
+
+actor PosterTransport: HTTPTransport {
+    private var responses: [Result<HTTPResponse, APIError>]
+    private(set) var requests: [URLRequest] = []
+    init(_ responses: [Result<HTTPResponse, APIError>]) { self.responses = responses }
+    func send(_ request: URLRequest) async throws -> HTTPResponse {
+        requests.append(request)
+        guard !responses.isEmpty else { throw APIError.networkUnavailable }
+        return try responses.removeFirst().get()
     }
 }

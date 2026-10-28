@@ -39,6 +39,20 @@ final class RecordStore {
         return try context.fetch(descriptor).first
     }
 
+    func setPosterFilename(_ filename: String, recordID: UUID, expectedPath: String?) throws {
+        var descriptor = FetchDescriptor<ViewingRecord>(predicate: #Predicate { $0.id == recordID })
+        descriptor.fetchLimit = 1
+        guard let record = try context.fetch(descriptor).first, record.posterPath == expectedPath,
+              record.posterFilename != filename else { return }
+        let previous = record.posterFilename
+        record.posterFilename = filename
+        do { try context.save() }
+        catch {
+            record.posterFilename = previous
+            throw error
+        }
+    }
+
     func insert(_ record: ViewingRecord) throws {
         // 不依赖 unique 冲突报错：SwiftData 的唯一约束可能执行覆盖更新。
         if let existing = try existingRecord(tmdbID: record.tmdbID, mediaType: record.mediaType) {

@@ -4,6 +4,7 @@ struct RecordDraft {
     // 只标识本次编辑，用于隔离旧表单的迟到事件，不写入数据库。
     let editingID = UUID()
     var details: MediaDetails
+    var posterFilename: String?
     var watchedOn: Date = .now
     var myRating: Int?
     var shortReview = ""
@@ -38,6 +39,7 @@ struct RecordDraft {
             imdbRating: details.imdbRating,
             rottenTomatoesRating: details.rottenTomatoesRating,
             posterPath: details.posterPath,
+            posterFilename: posterFilename,
             watchedOn: watchedOn,
             myRating: myRating,
             shortReview: shortReview.trimmingCharacters(in: .whitespacesAndNewlines),
