@@ -3,13 +3,14 @@ import SwiftUI
 
 struct AppRootView: View {
     let persistence: PersistenceController
+    let catalog: any MediaCatalogServing
     @Environment(SettingsViewModel.self) private var settings
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
             if let container = persistence.container {
-                LibraryView()
+                LibraryView(catalog: catalog)
                     .modelContainer(container)
             } else if let errorDescription = persistence.errorDescription {
                 StorageErrorView(errorDescription: errorDescription) {

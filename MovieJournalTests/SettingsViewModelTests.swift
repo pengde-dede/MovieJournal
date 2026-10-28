@@ -32,7 +32,7 @@ struct SettingsViewModelTests {
         #expect(await storage.value(for: .omdb) == "fake-omdb-old")
         #expect(model.status(for: .tmdb) == .saved)
         #expect(model.input(for: .tmdb).isEmpty)
-        #expect(model.notices[.tmdb] == .success("已保存到本机钥匙串，尚未联网验证。"))
+        #expect(model.notices[.tmdb] == .success("已保存到本机钥匙串。"))
         #expect(!model.isWorking)
 
         let reopened = SettingsViewModel(keychain: storage)
