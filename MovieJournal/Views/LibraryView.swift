@@ -55,6 +55,7 @@ struct LibraryView: View {
                 ToolbarItem(placement: .automatic) {
                     Text(matching.count == records.count ? "\(records.count) 部作品" : "显示 \(matching.count) / \(records.count) 部")
                         .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
                 }
                 ToolbarItem(placement: .primaryAction) {
                     SettingsLink { Label("设置", systemImage: "gearshape") }.help("设置")
