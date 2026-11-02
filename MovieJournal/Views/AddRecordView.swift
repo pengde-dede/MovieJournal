@@ -4,6 +4,7 @@ struct AddRecordView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(SettingsViewModel.self) private var settings
     @State private var model: AddRecordViewModel
+    @FocusState private var isSearchFocused: Bool
     let openRecord: (UUID) -> Void
 
     init(catalog: any MediaCatalogServing, store: RecordStore, posters: any PosterCaching, openRecord: @escaping (UUID) -> Void) {
@@ -19,61 +20,108 @@ struct AddRecordView: View {
                 Button("取消") { dismiss() }
                     .keyboardShortcut(.cancelAction)
             }
-            .padding(20)
+            .padding(.horizontal, 20).padding(.vertical, 16)
+            .fixedSize(horizontal: false, vertical: true)
+            Divider()
+            searchBar
+                .fixedSize(horizontal: false, vertical: true)
             Divider()
             HSplitView {
-                searchPane.frame(minWidth: 270, idealWidth: 310, maxWidth: 360)
-                detailsPane.frame(minWidth: 570)
+                searchPane
+                    .frame(minWidth: 270, idealWidth: 310, maxWidth: 360, maxHeight: .infinity, alignment: .top)
+                detailsPane
+                    .frame(minWidth: 570, maxWidth: .infinity, maxHeight: .infinity)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(width: 1040, height: 740)
+        .task { isSearchFocused = true }
+        .onChange(of: model.searchMode) { _, _ in isSearchFocused = true }
         .onDisappear { model.cancelPendingWork() }
     }
 
-    private var searchPane: some View {
+    private var searchBar: some View {
         @Bindable var model = model
         let isDirectorMode = model.searchMode == .director
-        return VStack(alignment: .leading, spacing: 14) {
-            if model.canSearchByDirector {
-                Picker("搜索方式", selection: Binding(get: { model.searchMode }, set: { model.switchMode(to: $0) })) {
-                    ForEach(AddRecordViewModel.SearchMode.allCases) { Text($0.title).tag($0) }
+        return VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                if model.canSearchByDirector {
+                    Picker("搜索方式", selection: Binding(get: { model.searchMode }, set: { model.switchMode(to: $0) })) {
+                        ForEach(AddRecordViewModel.SearchMode.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 130)
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-            }
-            HStack {
-                TextField(isDirectorMode ? "输入导演名字，例如：诺兰" : "输入电影或剧集片名", text: $model.query)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit { model.search() }
-                    .accessibilityLabel(isDirectorMode ? "联网搜索导演" : "联网搜索片名")
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField(isDirectorMode ? "输入导演名字，例如：诺兰" : "输入电影或剧集片名", text: $model.query)
+                        .textFieldStyle(.plain)
+                        .focused($isSearchFocused)
+                        .onSubmit { model.search() }
+                        .accessibilityLabel(isDirectorMode ? "联网搜索导演" : "联网搜索片名")
+                    if !model.query.isEmpty {
+                        Button { model.query = ""; isSearchFocused = true } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("清空输入").accessibilityLabel("清空搜索输入")
+                    }
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 38)
+                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(isSearchFocused ? Color.accentColor : Color.secondary.opacity(0.25), lineWidth: 1)
+                }
                 Button("搜索") { model.search() }
+                    .buttonStyle(.borderedProminent).controlSize(.large)
                     .disabled(model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+            .frame(maxWidth: 760)
             if settings.status(for: .tmdb) == .missing {
-                Text("请先在设置中填写 TMDB Key。")
-                    .font(.callout).foregroundStyle(.secondary)
-                SettingsLink { Text("打开设置") }
-            }
-            if model.isSearching {
-                ProgressView("正在搜索…")
-                    .controlSize(.small)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error = model.searchError {
-                failure(title: "搜索失败", message: error) { model.search() }
-            } else if isDirectorMode {
-                directorResults
-            } else if model.results.isEmpty {
-                ContentUnavailableView(
-                    model.hasSearched ? "没有搜索结果" : "搜索电影和剧集",
-                    systemImage: "magnifyingglass",
-                    description: Text(model.hasSearched ? "没有找到相关电影或剧集，请尝试其他片名。" : "输入片名，搜索后选择正确的作品。")
-                )
-            } else {
-                List(model.results) { candidateButton($0) }
-                    .listStyle(.plain)
+                HStack(spacing: 10) {
+                    Text("请先在设置中填写 TMDB Key。")
+                        .font(.callout).foregroundStyle(.secondary)
+                    SettingsLink { Text("打开设置") }
+                }
             }
         }
-        .padding(16)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24).padding(.vertical, 16)
+    }
+
+    private var searchPane: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(model.searchMode == .director && model.selectedPerson == nil ? "人物候选" : "作品候选")
+                .font(.headline)
+                .padding(.horizontal, 16).padding(.vertical, 12)
+            Divider()
+            searchResults
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    @ViewBuilder
+    private var searchResults: some View {
+        if model.isSearching {
+            ProgressView("正在搜索…").controlSize(.small)
+        } else if let error = model.searchError {
+            failure(title: "搜索失败", message: error) { model.search() }
+        } else if model.searchMode == .director {
+            directorResults.padding(16)
+        } else if model.results.isEmpty {
+            ContentUnavailableView(
+                model.hasSearched ? "没有搜索结果" : "搜索电影和剧集",
+                systemImage: "magnifyingglass",
+                description: Text(model.hasSearched ? "没有找到相关电影或剧集，请尝试其他片名。" : "在上方输入片名，搜索后选择正确的作品。")
+            )
+        } else {
+            List(model.results) { candidateButton($0) }
+                .listStyle(.plain)
+        }
     }
 
     @ViewBuilder
