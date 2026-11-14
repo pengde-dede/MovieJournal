@@ -6,6 +6,13 @@ Keep a record of the films and TV series you watch, with posters, ratings, and s
 
 MovieJournal is a native macOS app built with SwiftUI and SwiftData. It supports macOS 14 and later, uses system frameworks, and stores your viewing records locally.
 
+## What is new in 1.2.0
+
+- Track Want to watch, Watching, and Watched. Filter the library by status and change it from details or a poster’s context menu. New works default to Want to watch.
+- Personal rating, viewing date, and TV season are optional and can be added later. Unrated works appear last when sorting by rating and are never treated as zero-star reviews.
+- Status changes preserve ratings, notes, and viewing history. Marking a work Watched fills today’s date only if no date exists; it can be cleared in the editor.
+- Existing records migrate to Watched with their data intact. Before upgrading, a snapshot is saved to Backups/BeforeV3.store. JSON backups now use version 2 and version 1 imports remain supported.
+
 ## What is new in 1.1.1
 
 - Use “记录重看” (Log a rewatch) in details to save each viewing date, rating, review, and TV season. Library cards show the latest viewing information.
@@ -18,7 +25,7 @@ MovieJournal is a native macOS app built with SwiftUI and SwiftData. It supports
 
 - **Poster library** — Sort by date added, viewing date, or personal rating. Search titles, directors, creators, or cast members, and filter by films or TV series.
 - **Online lookup** — Search TMDB and choose a work to retrieve its title, year, genres, director or creators, top five cast members, synopsis, poster, and TMDB rating.
-- **Personal viewing records** — Save a viewing date, an integer rating from 1 to 10, an optional short review, and the season reached for a TV series.
+- **Personal viewing records** — Track viewing status, with an optional date, integer rating from 1 to 10, short review, and TV season.
 - **Additional ratings** — Configure an optional OMDb API key to retrieve IMDb and Rotten Tomatoes ratings when adding a work.
 - **Offline browsing and editing** — View saved metadata and successfully downloaded posters, and edit personal viewing information offline.
 - **Duplicate detection and confirmed deletion** — Open the existing record when adding a duplicate. Confirm deletions and clean up posters according to the remaining records.
@@ -42,7 +49,7 @@ MovieJournal is a native macOS app built with SwiftUI and SwiftData. It supports
 
 ## Adding a viewing record
 
-Click **添加观影记录** (Add viewing record), enter a title, and select the correct work. Review its details, enter your viewing date and personal rating, and optionally write a short review. For TV series, enter a positive integer season number, such as `2`. You can record a season you are still watching.
+Click **添加观影记录** (Add viewing record), search for a work, and save it directly to Want to watch. You can also select Watching or Watched. Ratings, dates, reviews, and TV seasons may be filled in later. If entered, ratings must be integers from 1 to 10 and seasons must be positive integers, such as 2.
 
 Save when personal information is complete; the library can finish caching the poster afterward. Failed downloads can be retried. Additional ratings may be empty when OMDb is unconfigured, has no rating, or fails to respond. Refresh IMDb and Rotten Tomatoes ratings manually from the details page.
 
@@ -53,11 +60,11 @@ Saving opens the detail page, where you can edit personal information or confirm
 | Item | Behavior |
 | --- | --- |
 | Work identity | Media type and TMDB ID identify each work, which can have multiple viewing entries |
-| Date and rating | The date defaults to today and means the latest viewing date for TV series; an integer personal rating from 1 to 10 is required |
+| Date and rating | Both optional; marking Watched fills today only when the date is empty and the editor can clear it; ratings, when entered, are integers from 1 to 10 |
 | Search results | Online searches show the first page of results |
 | Metadata | Chinese is preferred; an empty Chinese synopsis falls back to English with a language label |
 | Platform ratings | Stored as a local snapshot; OMDb ratings may be unavailable |
-| Database | `Application Support/MovieJournal/MovieJournal.store` inside the app sandbox, using the V2 schema |
+| Database | `Application Support/MovieJournal/MovieJournal.store` inside the app sandbox, using the V3 schema |
 | Posters | Saved works use the `Posters/` subdirectory; search thumbnails use an in-memory cache |
 | Offline use | Read saved metadata and cached posters, and edit or delete records |
 | Sync and keys | Data is stored locally with CloudKit sync disabled; API keys use macOS Keychain with iCloud Keychain sync disabled |

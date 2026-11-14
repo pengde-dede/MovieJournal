@@ -97,5 +97,3 @@ nonisolated enum MovieJournalSchemaV1: VersionedSchema {
         }
     }
 }
-
-typealias ViewingRecord = MovieJournalSchemaV1.ViewingRecord

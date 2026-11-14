@@ -8,6 +8,8 @@ struct LibraryView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \ViewingRecord.createdAt, order: .reverse) private var records: [ViewingRecord]
     @State private var model = LibraryViewModel()
+    @State private var statusError: String?
+    @State private var showingStatusError = false
     @State private var showingBackup = false
     @State private var isShowingAdd = false
     @State private var addingSession: UUID?
@@ -29,6 +31,7 @@ struct LibraryView: View {
                 .safeAreaInset(edge: .top, spacing: 0) {
                     VStack(spacing: 0) {
                         searchControls
+                        statusControls
                         posterStatus
                     }
                 }
@@ -69,6 +72,9 @@ struct LibraryView: View {
                 }
             }
         }
+        .alert("状态未能保存", isPresented: $showingStatusError) {
+            Button("好", role: .cancel) {}
+        } message: { Text(statusError ?? "请稍后重试。") }
         .onDisappear { finishAdding() }
         .environment(\.posterCache, posters)
         .environment(\.posterReloadVersions, model.posterReloadVersions)
@@ -107,6 +113,25 @@ struct LibraryView: View {
         .background { LibraryGlassSurface(style: glassStyle, tint: tint).allowsHitTesting(false) }
         .padding(.horizontal, 24)
         .padding(.vertical, 8)
+    }
+
+    private var statusControls: some View {
+        @Bindable var model = model
+        return Picker("观看状态筛选", selection: $model.statusFilter) {
+            ForEach(LibraryStatusFilter.allCases) { filter in
+                let count = records.filter { filter.includes($0.watchStatus) }.count
+                Text("\(filter.title) \(count)").tag(filter)
+            }
+        }
+        .pickerStyle(.segmented).labelsHidden()
+        .frame(maxWidth: 520)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 24).padding(.bottom, 10)
+    }
+
+    private func changeStatus(_ status: WatchStatus, record: ViewingRecord) {
+        do { try RecordStore(context: context).setWatchStatus(status, recordID: record.id) }
+        catch { statusError = error.localizedDescription; showingStatusError = true }
     }
 
     private func showAdd() {
@@ -167,7 +192,7 @@ struct LibraryView: View {
             ContentUnavailableView {
                 Label("还没有观影记录", systemImage: "film.stack")
             } description: {
-                Text("把看过的电影和剧集留在这里。")
+                Text("收藏想看的电影和剧集，记录观看进度与感受。")
             } actions: {
                 Button("添加观影记录", systemImage: "plus") { showAdd() }
                     .buttonStyle(.borderedProminent).disabled(model.isPreparingLibrary || cleanup.isCleaning)
@@ -176,7 +201,7 @@ struct LibraryView: View {
             ContentUnavailableView {
                 Label("没有符合条件的记录", systemImage: "magnifyingglass")
             } description: {
-                Text("试试其他片名或人名（欧美影人多为英文名），或切换电影与剧集筛选。")
+                Text("试试其他片名或人名（欧美影人多为英文名），或切换作品类型和观看状态。")
             } actions: {
                 Button("清除搜索和筛选") { model.resetFilters() }
             }
@@ -184,7 +209,15 @@ struct LibraryView: View {
             ScrollView {
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
                     ForEach(matching) { record in
-                        NavigationLink(value: record.id) { RecordCard(record: record) }.buttonStyle(.plain)
+                        NavigationLink(value: record.id) { RecordCard(record: record) }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                ForEach(WatchStatus.allCases) { status in
+                                    Button { changeStatus(status, record: record) } label: {
+                                        Label("标为\(status.title)", systemImage: status.systemImage)
+                                    }.disabled(record.watchStatus == status)
+                                }
+                            }
                     }
                 }
                 .padding(28)
@@ -200,12 +233,19 @@ private struct RecordCard: View {
         VStack(alignment: .leading, spacing: 8) {
             PosterView(path: record.posterPath, filename: record.posterFilename)
             Text(record.title).font(.headline).lineLimit(2)
+            Label(record.watchStatus.title, systemImage: record.watchStatus.systemImage)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(record.watchStatus == .watching ? Color.accentColor : Color.secondary)
             HStack {
                 Text(record.mediaType.title)
                 if let year = record.releaseYear { Text(String(year)) }
                 Spacer(minLength: 0)
-                Label("\(record.myRating)", systemImage: "star.fill").foregroundStyle(.secondary)
-                    .accessibilityLabel("我的评分 \(record.myRating) 分")
+                if let rating = record.myRating {
+                    Label("\(rating)", systemImage: "star.fill")
+                        .accessibilityLabel("我的评分 \(rating) 分")
+                } else {
+                    Text("未评分")
+                }
             }
             .font(.caption).foregroundStyle(.secondary)
         }

@@ -5,7 +5,8 @@ struct RecordDraft {
     let editingID = UUID()
     var details: MediaDetails
     var posterFilename: String?
-    var watchedOn: Date = .now
+    var watchStatus = WatchStatus.watched
+    var watchedOn: Date? = .now
     var myRating: Int?
     var shortReview = ""
     // 保留正在输入的原文，校验失败也不丢失；只有有效整数才进入持久化模型。
@@ -23,21 +24,26 @@ struct RecordDraft {
     var seasonValidationMessage: String? {
         guard details.mediaType == .tv, watchedSeason == nil else { return nil }
         if watchedSeasonText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return "请填写看到第几季，例如 2（只填写数字）。"
+            return nil
         }
         return "请只填写大于 0 的整数，例如 2（表示第 2 季）。"
     }
 
     var validationMessage: String? {
-        guard let myRating, (1...10).contains(myRating) else {
-            return "请选择 1–10 分的个人评分。"
+        if let myRating, !(1...10).contains(myRating) {
+            return "个人评分需要是 1–10 的整数，也可以暂不评分。"
         }
         return seasonValidationMessage
     }
 
+    mutating func changeStatus(to status: WatchStatus) {
+        watchStatus = status
+        // Marking a work watched supplies a convenient default; existing dates are retained.
+        if status == .watched, watchedOn == nil { watchedOn = .now }
+    }
+
     func makeRecord() throws -> ViewingRecord {
         if let message = validationMessage { throw DraftError.invalid(message) }
-        guard let myRating else { throw DraftError.invalid("请选择个人评分。") }
         return ViewingRecord(
             tmdbID: details.tmdbID,
             mediaType: details.mediaType,
@@ -55,6 +61,7 @@ struct RecordDraft {
             rottenTomatoesRating: details.rottenTomatoesRating,
             posterPath: details.posterPath,
             posterFilename: posterFilename,
+            watchStatus: watchStatus,
             watchedOn: watchedOn,
             myRating: myRating,
             shortReview: shortReview.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -75,6 +82,7 @@ extension RecordDraft {
     init(record: ViewingRecord) {
         self.init(details: MediaDetails(record: record))
         posterFilename = record.posterFilename
+        watchStatus = record.watchStatus
         watchedOn = record.watchedOn
         myRating = record.myRating
         shortReview = record.shortReview

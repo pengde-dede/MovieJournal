@@ -6,6 +6,7 @@ final class RecordStore {
     enum SaveError: LocalizedError, Equatable {
         case duplicate(existingRecordID: UUID)
         case invalidRating
+        case invalidViewing
         case invalidSeason
         case recordNotFound
         case imdbIDChanged
@@ -16,6 +17,8 @@ final class RecordStore {
                 "这部作品已经在观影记录中，可以打开已有记录。"
             case .invalidRating:
                 "我的评分需要是 1–10 的整数。"
+            case .invalidViewing:
+                "请先将作品标为已看，再记录重看。"
             case .invalidSeason:
                 "请填写有效的剧集季数，例如 2（只填写大于 0 的整数）。"
             case .recordNotFound:
@@ -65,38 +68,34 @@ final class RecordStore {
         }
     }
 
-    func updatePersonalInformation(recordID: UUID, watchedOn: Date, myRating: Int,
-                                   shortReview: String, watchedSeason: Int?) throws {
+    func updatePersonalInformation(recordID: UUID, watchedOn: Date?, myRating: Int?,
+                                   shortReview: String, watchedSeason: Int?, watchStatus: WatchStatus? = nil) throws {
         let record = try requiredRecord(id: recordID)
-        guard (1...10).contains(myRating) else { throw SaveError.invalidRating }
-        if record.mediaType == .tv, (watchedSeason ?? 0) < 1 {
+        if let myRating, !(1...10).contains(myRating) { throw SaveError.invalidRating }
+        if record.mediaType == .tv, let watchedSeason, watchedSeason < 1 {
             throw SaveError.invalidSeason
         }
-        // Editing the latest visit may place it before an earlier one.
-        var descriptor = FetchDescriptor<EarlierViewing>(
-            predicate: #Predicate { $0.recordID == recordID },
-            sortBy: [SortDescriptor(\.watchedOn, order: .reverse)])
-        descriptor.fetchLimit = 1
-        let previous = try context.fetch(descriptor).first
         // 只更新个人信息，不用旧草稿覆盖平台资料或其他窗口补存的海报引用。
+        if let watchStatus { record.watchStatus = watchStatus }
         record.watchedOn = watchedOn
         record.myRating = myRating
         record.shortReview = shortReview.trimmingCharacters(in: .whitespacesAndNewlines)
         record.watchedSeason = record.mediaType == .tv ? watchedSeason : nil
-        if let previous, previous.watchedOn > watchedOn {
-            let promoted = (previous.watchedOn, previous.rating, previous.review, previous.season)
-            previous.watchedOn = record.watchedOn
-            previous.rating = record.myRating
-            previous.review = record.shortReview
-            previous.season = record.watchedSeason
-            (record.watchedOn, record.myRating, record.shortReview, record.watchedSeason) = promoted
-        }
         record.updatedAt = .now
-        do { try saveChanges() }
+        do { try promoteLatestViewing(record); try saveChanges() }
         catch {
             context.rollback()
             throw error
         }
+    }
+
+    func setWatchStatus(_ status: WatchStatus, recordID: UUID) throws {
+        let record = try requiredRecord(id: recordID)
+        guard record.watchStatus != status else { return }
+        record.watchStatus = status
+        if status == .watched, record.watchedOn == nil { record.watchedOn = .now }
+        record.updatedAt = .now
+        do { try saveChanges() } catch { context.rollback(); throw error }
     }
 
     func updateSupplementalRatings(_ ratings: PlatformRatings, recordID: UUID, expectedIMDbID: String) throws {
@@ -118,9 +117,10 @@ final class RecordStore {
     func addViewing(recordID: UUID, draft: RecordDraft) throws {
         let record = try requiredRecord(id: recordID)
         if let message = draft.validationMessage { throw RecordDraft.DraftError.invalid(message) }
-        guard let rating = draft.myRating else { throw SaveError.invalidRating }
+        guard record.watchStatus == .watched, draft.watchStatus == .watched else { throw SaveError.invalidViewing }
+        let rating = draft.myRating
         let review = draft.shortReview.trimmingCharacters(in: .whitespacesAndNewlines)
-        if draft.watchedOn < record.watchedOn {
+        if let newDate = draft.watchedOn, let currentDate = record.watchedOn, newDate < currentDate {
             context.insert(EarlierViewing(recordID: recordID, watchedOn: draft.watchedOn,
                                           rating: rating, review: review, season: draft.watchedSeason))
         } else {
@@ -132,7 +132,25 @@ final class RecordStore {
             record.watchedSeason = draft.watchedSeason
         }
         record.updatedAt = .now
-        do { try saveChanges() } catch { context.rollback(); throw error }
+        do { try promoteLatestViewing(record); try saveChanges() } catch { context.rollback(); throw error }
+    }
+
+    // Unknown dates stay unknown; when both visits have dates, keep the latest on the work.
+    private func promoteLatestViewing(_ record: ViewingRecord) throws {
+        guard let date = record.watchedOn else { return }
+        let identifier = record.id
+        var descriptor = FetchDescriptor<EarlierViewing>(
+            predicate: #Predicate { $0.recordID == identifier },
+            sortBy: [SortDescriptor(\.watchedOn, order: .reverse)])
+        descriptor.fetchLimit = 1
+        guard let previous = try context.fetch(descriptor).first,
+              let previousDate = previous.watchedOn, previousDate > date else { return }
+        let promoted = (previous.watchedOn, previous.rating, previous.review, previous.season)
+        previous.watchedOn = record.watchedOn
+        previous.rating = record.myRating
+        previous.review = record.shortReview
+        previous.season = record.watchedSeason
+        (record.watchedOn, record.myRating, record.shortReview, record.watchedSeason) = promoted
     }
 
     func delete(recordID: UUID) throws {
@@ -159,10 +177,13 @@ final class RecordStore {
         if let existing = try existingRecord(tmdbID: record.tmdbID, mediaType: record.mediaType) {
             throw SaveError.duplicate(existingRecordID: existing.id)
         }
-        guard (1...10).contains(record.myRating) else {
+        if let rating = record.myRating, !(1...10).contains(rating) {
             throw SaveError.invalidRating
         }
 
+        if record.mediaType == .tv, let season = record.watchedSeason, season < 1 {
+            throw SaveError.invalidSeason
+        }
         context.insert(record)
         do {
             try saveChanges()

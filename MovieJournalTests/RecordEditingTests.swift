@@ -73,7 +73,7 @@ struct RecordEditingTests {
         #expect(!fixture.container.mainContext.hasChanges)
     }
 
-    @Test("无效季数保留原文，不覆盖已存进度", arguments: ["", "0", "-1", "第2季", "二"])
+    @Test("无效季数保留原文，不覆盖已存进度", arguments: ["0", "-1", "第2季", "二"])
     func invalidSeasonKeepsOriginal(text: String) throws {
         let fixture = try database()
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
@@ -85,7 +85,7 @@ struct RecordEditingTests {
         #expect(model.draft.watchedSeasonText == text && model.saveError != nil)
         #expect(record.watchedSeason == 2 && record.shortReview == "原短评")
         #expect(throws: RecordStore.SaveError.invalidSeason) {
-            try fixture.store.updatePersonalInformation(recordID: record.id, watchedOn: .now, myRating: 9, shortReview: "无效", watchedSeason: model.draft.watchedSeason)
+            try fixture.store.updatePersonalInformation(recordID: record.id, watchedOn: .now, myRating: 9, shortReview: "无效", watchedSeason: 0)
         }
         #expect(!fixture.container.mainContext.hasChanges)
     }

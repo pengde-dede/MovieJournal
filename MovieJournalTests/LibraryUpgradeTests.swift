@@ -23,7 +23,7 @@ struct LibraryUpgradeTests {
         let id = UUID()
         do {
             let old = try openV1(dir.appendingPathComponent("MovieJournal.store"))
-            let record = ViewingRecord(id: id, tmdbID: 123, mediaType: .movie, title: "测试电影", myRating: 8, shortReview: "初看")
+            let record = MovieJournalSchemaV1.ViewingRecord(id: id, tmdbID: 123, mediaType: .movie, title: "测试电影", myRating: 8, shortReview: "初看")
             old.mainContext.insert(record)
             try old.mainContext.save()
         }
@@ -31,7 +31,7 @@ struct LibraryUpgradeTests {
         let item = try #require(current.mainContext.fetch(FetchDescriptor<ViewingRecord>()).first)
         #expect(item.id == id && item.shortReview == "初看")
         let before = try openV1(dir.appendingPathComponent("Backups/BeforeV2.store"))
-        #expect(try before.mainContext.fetch(FetchDescriptor<ViewingRecord>()).first?.id == id)
+        #expect(try before.mainContext.fetch(FetchDescriptor<MovieJournalSchemaV1.ViewingRecord>()).first?.id == id)
     }
 
     @Test func draftProtectionTracksPersonalChangesOnly() async throws {
@@ -41,10 +41,10 @@ struct LibraryUpgradeTests {
         let model = AddRecordViewModel(catalog: ImmediateCatalog(), store: RecordStore(context: container.mainContext), posters: StubPosterCache())
         await model.select(Fixtures.movie).value
         #expect(!model.hasPersonalEdits)
-        let original = try #require(model.draft?.watchedOn)
+        let original = Date(timeIntervalSince1970: 1_793_030_400)
         model.draft?.watchedOn = original.addingTimeInterval(-86400)
         #expect(model.hasPersonalEdits)
-        model.draft?.watchedOn = original
+        model.draft?.watchedOn = nil
         model.draft?.shortReview = "保留草稿"
         #expect(model.hasPersonalEdits)
         await model.posterTask?.value
@@ -76,10 +76,10 @@ struct LibraryUpgradeTests {
         try store.insert(record)
         var draft = RecordDraft(details: MediaDetails(record: record))
         draft.myRating = 10
-        draft.watchedOn = record.watchedOn.addingTimeInterval(86400)
+        draft.watchedOn = try #require(record.watchedOn).addingTimeInterval(86400)
         draft.shortReview = "重看"
         try store.addViewing(recordID: record.id, draft: draft)
-        draft.watchedOn = record.watchedOn.addingTimeInterval(-172800)
+        draft.watchedOn = try #require(record.watchedOn).addingTimeInterval(-172800)
         try store.addViewing(recordID: record.id, draft: draft)
         let snapshot = try await LibraryBackup.snapshot(context: source.mainContext, cache: srcCache)
         let backup = try JSONDecoder().decode(LibraryBackup.self, from: JSONEncoder().encode(snapshot))

@@ -91,6 +91,9 @@ private struct PosterImageView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .help(errorMessage ?? "影片海报")
+            // Treat the placeholder and loaded poster as one image; nested shape labels can recurse in macOS AX.
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isImage)
             .accessibilityLabel(image == nil ? "暂无海报" : "影片海报")
             .task(id: request) { await load() }
     }

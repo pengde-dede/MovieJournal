@@ -39,7 +39,7 @@ struct AddRecordView: View {
                 Divider()
                 HStack {
                     Spacer()
-                    Button("保存观影记录") {
+                    Button("加入\(draft.watchStatus.title)") {
                         if let id = model.saveRecord() { openRecord(id) }
                     }
                     .buttonStyle(.borderedProminent)

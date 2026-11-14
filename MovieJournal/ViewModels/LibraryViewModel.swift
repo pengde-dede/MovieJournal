@@ -12,6 +12,7 @@ nonisolated struct SavedPosterTarget: Sendable {
 final class LibraryViewModel {
     var searchText = ""
     var mediaFilter = LibraryMediaFilter.all
+    var statusFilter = LibraryStatusFilter.all
     private(set) var isCachingPosters = false
     private(set) var completedPosters = 0
     private(set) var totalPosters = 0
@@ -24,12 +25,18 @@ final class LibraryViewModel {
     func matchingRecords(in records: [ViewingRecord], sort: LibrarySort = .added) -> [ViewingRecord] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let matches = records.filter {
-            mediaFilter.includes($0.mediaType) && (query.isEmpty || Self.record($0, matches: query))
+            mediaFilter.includes($0.mediaType) && statusFilter.includes($0.watchStatus) && (query.isEmpty || Self.record($0, matches: query))
         }
         switch sort {
         case .added: return matches
-        case .watched: return matches.sorted { $0.watchedOn > $1.watchedOn }
-        case .rating: return matches.sorted { $0.myRating > $1.myRating }
+        case .watched: return matches.sorted {
+            if $0.watchedOn == $1.watchedOn { return $0.createdAt > $1.createdAt }
+            return ($0.watchedOn ?? .distantPast) > ($1.watchedOn ?? .distantPast)
+        }
+        case .rating: return matches.sorted {
+            if $0.myRating == $1.myRating { return $0.createdAt > $1.createdAt }
+            return ($0.myRating ?? 0) > ($1.myRating ?? 0)
+        }
         }
     }
 
@@ -42,6 +49,7 @@ final class LibraryViewModel {
     func resetFilters() {
         searchText = ""
         mediaFilter = .all
+        statusFilter = .all
     }
 
     func cacheSavedPosters(_ targets: [SavedPosterTarget], cache: any PosterFileManaging, store: RecordStore, cleanup: PosterCleanupCoordinator) async {

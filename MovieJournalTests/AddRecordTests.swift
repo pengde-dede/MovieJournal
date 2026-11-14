@@ -81,7 +81,7 @@ struct AddRecordTests {
         #expect(original.shortReview == "保留")
     }
 
-    @Test("取消添加不写库；评分与季数未填写时不能生成记录")
+    @Test("取消添加不写库；评分与季数均可稍后补充")
     func cancellingDoesNotPersistDraft() async throws {
         let fixture = try storeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
@@ -89,9 +89,9 @@ struct AddRecordTests {
         await model.select(Fixtures.series).value
         await model.posterTask?.value
         await model.supplementalTask?.value
-        #expect(model.draft?.validationMessage != nil)
+        #expect(model.draft?.validationMessage == nil)
         model.draft?.myRating = 8
-        #expect(model.draft?.validationMessage != nil)
+        #expect(model.draft?.validationMessage == nil)
         model.draft?.watchedSeason = 2
         #expect(model.draft?.validationMessage == nil)
         model.cancelPendingWork()

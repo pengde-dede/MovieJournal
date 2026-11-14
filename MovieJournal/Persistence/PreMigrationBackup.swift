@@ -19,6 +19,34 @@ enum PreMigrationBackup {
         try files.moveItem(at: temporary, to: destination)
     }
 
+    // Read the on-disk columns before opening the new schema. This also supports a V1 → V3 jump.
+    static func preserveBeforeV3(at store: URL) throws {
+        let files = FileManager.default
+        guard files.fileExists(atPath: store.path) else { return }
+        var database: OpaquePointer?
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement); sqlite3_close(database) }
+        guard sqlite3_open_v2(store.path, &database, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
+              sqlite3_prepare_v2(database, "SELECT name FROM pragma_table_info('ZVIEWINGRECORD')", -1, &statement, nil) == SQLITE_OK
+        else { throw Failure.snapshot }
+        var columns: Set<String> = []
+        var step = sqlite3_step(statement)
+        while step == SQLITE_ROW {
+            if let text = sqlite3_column_text(statement, 0) { columns.insert(String(cString: text).uppercased()) }
+            step = sqlite3_step(statement)
+        }
+        guard step == SQLITE_DONE, !columns.isEmpty else { throw Failure.snapshot }
+        guard !columns.contains("ZWATCHSTATUSRAWVALUE") else { return }
+        let folder = store.deletingLastPathComponent().appendingPathComponent("Backups", isDirectory: true)
+        let destination = folder.appendingPathComponent("BeforeV3.store")
+        guard !files.fileExists(atPath: destination.path) else { return }
+        try files.createDirectory(at: folder, withIntermediateDirectories: true)
+        let temporary = folder.appendingPathComponent(UUID().uuidString)
+        defer { try? files.removeItem(at: temporary) }
+        try copyDatabase(from: store, to: temporary)
+        try files.moveItem(at: temporary, to: destination)
+    }
+
     private static func copyDatabase(from source: URL, to target: URL) throws {
         var input: OpaquePointer?
         var output: OpaquePointer?

@@ -36,6 +36,7 @@ struct RecordDetailView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @State private var model = RecordDetailViewModel()
+    @State private var statusError: String?
     @State private var isRewatch = false
     @State private var isEditing = false
 
@@ -59,10 +60,24 @@ struct RecordDetailView: View {
                 }
                 GroupBox("我的观影记录") {
                     VStack(alignment: .leading, spacing: 14) {
-                        LabeledContent(record.mediaType == .tv ? "最近观看日期" : "观看日期") {
-                            Text(record.watchedOn, format: .dateTime.year().month().day())
+                        Picker("观看状态", selection: Binding(get: { record.watchStatus }, set: { status in
+                            do {
+                                try RecordStore(context: context).setWatchStatus(status, recordID: record.id)
+                                statusError = nil
+                            } catch { statusError = error.localizedDescription }
+                        })) {
+                            ForEach(WatchStatus.allCases) { Text($0.title).tag($0) }
                         }
-                        LabeledContent("我的评分", value: "\(record.myRating)/10")
+                        .pickerStyle(.segmented)
+                        if let statusError {
+                            Label(statusError, systemImage: "exclamationmark.triangle").foregroundStyle(.red)
+                        }
+                        LabeledContent(record.mediaType == .tv ? "最近观看日期" : "观看日期") {
+                            if let date = record.watchedOn {
+                                Text(date, format: .dateTime.year().month().day())
+                            } else { Text("未记录").foregroundStyle(.secondary) }
+                        }
+                        LabeledContent("我的评分", value: record.myRating.map { "\($0)/10" } ?? "暂未评分")
                         if record.mediaType == .tv, let season = record.watchedSeason {
                             LabeledContent("观看进度", value: "看到第 \(season) 季")
                         }
@@ -92,7 +107,9 @@ struct RecordDetailView: View {
                 .disabled(model.isRefreshingRatings)
             }
             ToolbarItem(placement: .primaryAction) {
-                Button("记录重看", systemImage: "repeat") { isRewatch = true }.help("记录一次重看")
+                if record.watchStatus == .watched {
+                    Button("记录重看", systemImage: "repeat") { isRewatch = true }.help("记录一次重看")
+                }
             }
             ToolbarItem(placement: .primaryAction) {
                 Button("编辑", systemImage: "pencil") { isEditing = true }.help("编辑观影记录")
@@ -135,8 +152,10 @@ private struct ViewingHistory: View {
                 ForEach(history) { item in
                     VStack(alignment: .leading) {
                         HStack {
-                            Text(item.watchedOn, format: .dateTime.year().month().day())
-                            Text("\(item.rating)/10")
+                            if let date = item.watchedOn {
+                                Text(date, format: .dateTime.year().month().day())
+                            } else { Text("日期未记录") }
+                            Text(item.rating.map { "\($0)/10" } ?? "暂未评分")
                             if let season = item.season { Text("第 \(season) 季") }
                         }
                         if !item.review.isEmpty { Text(item.review) }

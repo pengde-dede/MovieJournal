@@ -15,7 +15,7 @@ struct BackupView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("备份与恢复").font(.title2.bold())
-            Text("导出作品、观影历史和已缓存的海报。恢复时保留本机已有作品，跳过重复项。")
+            Text("导出作品、观看状态、评分、观影历史和已缓存的海报。恢复时保留本机已有作品，跳过重复项。")
             HStack {
                 Button("导出备份…") { exportBackup() }
                 Button("选择备份…") { selectBackup() }

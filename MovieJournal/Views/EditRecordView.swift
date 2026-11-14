@@ -24,7 +24,7 @@ struct EditRecordView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     Text(model.draft.details.title).font(.title3.bold())
-                    RecordEditorView(draft: $model.draft)
+                    RecordEditorView(draft: $model.draft, isRewatch: isRewatch)
                     if let error = model.saveError {
                         Label(error, systemImage: "exclamationmark.triangle")
                             .foregroundStyle(.red)

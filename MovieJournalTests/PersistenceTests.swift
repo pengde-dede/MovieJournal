@@ -142,12 +142,12 @@ struct PersistenceTests {
     }
 
     @Test("观看日期默认今天，电影不保存剧集进度")
-    func defaultViewingDateIsToday() {
+    func defaultViewingDateIsToday() throws {
         let before = Date.now
         let record = ViewingRecord(tmdbID: 1, mediaType: .movie, title: "测试", myRating: 8, watchedSeason: 3)
         let after = Date.now
-        #expect(record.watchedOn >= before)
-        #expect(record.watchedOn <= after)
+        #expect(try #require(record.watchedOn) >= before)
+        #expect(try #require(record.watchedOn) <= after)
         #expect(record.watchedSeason == nil)
     }
 

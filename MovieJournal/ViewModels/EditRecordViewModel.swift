@@ -26,13 +26,13 @@ final class EditRecordViewModel {
             saveError = message
             return false
         }
-        guard let rating = draft.myRating else { return false }
         do {
             if isRewatch {
                 try store.addViewing(recordID: recordID, draft: draft)
             } else {
                 try store.updatePersonalInformation(recordID: recordID, watchedOn: draft.watchedOn,
-                    myRating: rating, shortReview: draft.shortReview, watchedSeason: draft.watchedSeason)
+                    myRating: draft.myRating, shortReview: draft.shortReview, watchedSeason: draft.watchedSeason,
+                    watchStatus: draft.watchStatus)
             }
             didSave = true
             return true

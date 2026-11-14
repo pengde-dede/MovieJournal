@@ -28,7 +28,7 @@ final class AddRecordViewModel {
     private var initialWatchDate: Date?
     var hasPersonalEdits: Bool {
         guard let draft else { return false }
-        return draft.myRating != nil || !draft.shortReview.isEmpty || !draft.watchedSeasonText.isEmpty
+        return draft.watchStatus != .wantToWatch || draft.myRating != nil || !draft.shortReview.isEmpty || !draft.watchedSeasonText.isEmpty
             || draft.watchedOn != initialWatchDate
     }
 
@@ -203,7 +203,7 @@ final class AddRecordViewModel {
             do {
                 let details = try await catalog.details(for: candidate)
                 guard !Task.isCancelled, revision == selectionRevision else { return }
-                draft = RecordDraft(details: details)
+                draft = RecordDraft(details: details, watchStatus: .wantToWatch, watchedOn: nil)
                 initialWatchDate = draft?.watchedOn
                 isLoadingDetails = false
                 loadSupplemental(imdbID: details.imdbID, revision: revision)

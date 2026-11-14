@@ -37,7 +37,7 @@ struct SeasonInputTests {
         #expect(try editor.wrappedValue.makeRecord().watchedSeason == (value.contains("12") ? 12 : 2))
     }
 
-    @Test("无效数字保留原文且阻止保存旧的季数", arguments: ["", "0", "-2", "1.5", "2abc", "999999999999999999999999999999"])
+    @Test("无效数字保留原文且阻止保存旧的季数", arguments: ["0", "-2", "1.5", "2abc", "999999999999999999999999999999"])
     func invalidNumericInputCannotSave(value: String) {
         var draft = RecordDraft(details: Fixtures.details(Fixtures.series))
         draft.myRating = 8
