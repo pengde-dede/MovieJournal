@@ -8,10 +8,13 @@ struct LibraryView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \ViewingRecord.createdAt, order: .reverse) private var records: [ViewingRecord]
     @State private var model = LibraryViewModel()
+    @State private var showingBackup = false
     @State private var isShowingAdd = false
     @State private var addingSession: UUID?
     @State private var path: [UUID] = []
     @State private var posterRetry = 0
+
+    @AppStorage("librarySort") private var sort = LibrarySort.added
 
     private let columns = [GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 24)]
     nonisolated private struct PosterBatchID: Hashable {
@@ -20,38 +23,29 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        @Bindable var model = model
-        let matching = model.matchingRecords(in: records)
+        let matching = model.matchingRecords(in: records, sort: sort)
         return NavigationStack(path: $path) {
-            VStack(spacing: 0) {
-                HStack(spacing: 18) {
-                    HStack {
-                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                        TextField("搜索片名、导演或主演", text: $model.searchText)
-                            .textFieldStyle(.plain)
-                            .accessibilityLabel("搜索片名、导演或主演")
-                        if !model.searchText.isEmpty {
-                            Button { model.searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
-                                .buttonStyle(.plain).help("清除搜索")
-                                .accessibilityLabel("清除搜索")
-                        }
+            libraryContent(matching)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    VStack(spacing: 0) {
+                        searchControls
+                        posterStatus
                     }
-                    .padding(8)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-                    Picker("作品类型", selection: $model.mediaFilter) {
-                        ForEach(LibraryMediaFilter.allCases) { Text($0.title).tag($0) }
-                    }
-                    .pickerStyle(.segmented).labelsHidden().frame(width: 220)
                 }
-                .padding(.horizontal, 28).padding(.vertical, 16)
-                Divider()
-                posterStatus
-                libraryContent(matching)
-            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("观影记录")
             .navigationDestination(for: UUID.self) { RecordDetailDestinationView(recordID: $0, cleanup: cleanup, catalog: catalog) }
             .toolbar {
+                ToolbarItem {
+                    Menu {
+                        Picker("排序", selection: $sort) {
+                            ForEach(LibrarySort.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                        }
+                        Divider()
+                        Button("备份与恢复…") { showingBackup = true }
+                    } label: { Label("资料库选项", systemImage: "ellipsis.circle") }
+                    .help("排序、备份与恢复")
+                }
                 ToolbarItem(placement: .automatic) {
                     Text(matching.count == records.count ? "\(records.count) 部作品" : "显示 \(matching.count) / \(records.count) 部")
                         .foregroundStyle(.secondary)
@@ -64,6 +58,9 @@ struct LibraryView: View {
                     Button("添加观影记录", systemImage: "plus") { showAdd() }
                         .help("添加观影记录").disabled(model.isPreparingLibrary || cleanup.isCleaning)
                 }
+            }
+            .sheet(isPresented: $showingBackup) {
+                BackupView(context: context, posters: posters, cleanup: cleanup)
             }
             .sheet(isPresented: $isShowingAdd, onDismiss: finishAdding) {
                 AddRecordView(catalog: catalog, store: RecordStore(context: context), posters: posters) { id in
@@ -79,6 +76,37 @@ struct LibraryView: View {
             let targets = records.map { SavedPosterTarget(recordID: $0.id, path: $0.posterPath, filename: $0.posterFilename) }
             await model.cacheSavedPosters(targets, cache: posters, store: RecordStore(context: context), cleanup: cleanup)
         }
+    }
+
+    @AppStorage(LibraryGlassStyle.styleKey) private var glassStyle = LibraryGlassStyle.regular
+    @AppStorage(LibraryGlassStyle.tintKey) private var tint = LibraryGlassStyle.defaultTint
+
+    private var searchControls: some View {
+        @Bindable var model = model
+        return HStack(spacing: 18) {
+            HStack {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("搜索片名、导演或主演", text: $model.searchText)
+                    .textFieldStyle(.plain)
+                    .accessibilityLabel("搜索片名、导演或主演")
+                if !model.searchText.isEmpty {
+                    Button { model.searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain).help("清除搜索")
+                        .accessibilityLabel("清除搜索")
+                }
+            }
+            .padding(.leading, 5)
+            Divider().frame(height: 20)
+            Picker("作品类型", selection: $model.mediaFilter) {
+                ForEach(LibraryMediaFilter.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented).labelsHidden().fixedSize()
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 44)
+        .background { LibraryGlassSurface(style: glassStyle, tint: tint).allowsHitTesting(false) }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 8)
     }
 
     private func showAdd() {

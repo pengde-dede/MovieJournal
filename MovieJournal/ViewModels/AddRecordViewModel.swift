@@ -25,6 +25,13 @@ final class AddRecordViewModel {
     private(set) var selectedResult: MediaSearchResult?
     private(set) var isLoadingDetails = false
     private(set) var detailsError: String?
+    private var initialWatchDate: Date?
+    var hasPersonalEdits: Bool {
+        guard let draft else { return false }
+        return draft.myRating != nil || !draft.shortReview.isEmpty || !draft.watchedSeasonText.isEmpty
+            || draft.watchedOn != initialWatchDate
+    }
+
     var draft: RecordDraft?
     private(set) var duplicateRecordID: UUID?
     private(set) var saveError: String?
@@ -197,6 +204,7 @@ final class AddRecordViewModel {
                 let details = try await catalog.details(for: candidate)
                 guard !Task.isCancelled, revision == selectionRevision else { return }
                 draft = RecordDraft(details: details)
+                initialWatchDate = draft?.watchedOn
                 isLoadingDetails = false
                 loadSupplemental(imdbID: details.imdbID, revision: revision)
                 loadPoster(path: details.posterPath, revision: revision)
@@ -211,7 +219,7 @@ final class AddRecordViewModel {
     }
 
     func saveRecord() -> UUID? {
-        guard savedRecordID == nil, !isSaving, !isLoadingPoster, let draft else { return nil }
+        guard savedRecordID == nil, !isSaving, let draft else { return nil }
         saveError = nil
         isSaving = true
         do {

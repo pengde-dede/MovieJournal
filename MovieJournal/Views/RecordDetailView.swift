@@ -36,6 +36,7 @@ struct RecordDetailView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @State private var model = RecordDetailViewModel()
+    @State private var isRewatch = false
     @State private var isEditing = false
 
     var body: some View {
@@ -56,7 +57,6 @@ struct RecordDetailView: View {
                         .font(.callout)
                         .foregroundStyle(model.ratingsRefreshFailed ? Color.orange : Color.secondary)
                 }
-                MediaInformationView(details: MediaDetails(record: record), posterFilename: record.posterFilename)
                 GroupBox("我的观影记录") {
                     VStack(alignment: .leading, spacing: 14) {
                         LabeledContent(record.mediaType == .tv ? "最近观看日期" : "观看日期") {
@@ -72,6 +72,8 @@ struct RecordDetailView: View {
                     }
                     .padding(8)
                 }
+                ViewingHistory(recordID: record.id)
+                MediaInformationView(details: MediaDetails(record: record), posterFilename: record.posterFilename)
             }
             .frame(maxWidth: 1000)
             .padding(28)
@@ -90,6 +92,9 @@ struct RecordDetailView: View {
                 .disabled(model.isRefreshingRatings)
             }
             ToolbarItem(placement: .primaryAction) {
+                Button("记录重看", systemImage: "repeat") { isRewatch = true }.help("记录一次重看")
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Button("编辑", systemImage: "pencil") { isEditing = true }.help("编辑观影记录")
             }
             ToolbarItem(placement: .primaryAction) {
@@ -98,6 +103,9 @@ struct RecordDetailView: View {
                 }
                 .help("删除观影记录")
             }
+        }
+        .sheet(isPresented: $isRewatch) {
+            EditRecordView(record: record, store: RecordStore(context: context), isRewatch: true)
         }
         .sheet(isPresented: $isEditing) {
             EditRecordView(record: record, store: RecordStore(context: context))
@@ -108,7 +116,33 @@ struct RecordDetailView: View {
                 if model.confirmDeletion(store: RecordStore(context: context), cleanup: cleanup) { dismiss() }
             }
         } message: { request in
-            Text("将删除《\(request.title)》的观看日期、个人评分和短评。删除后无法恢复。")
+            Text("将删除《\(request.title)》的全部观看历史、个人评分和短评。删除后无法恢复。")
+        }
+    }
+}
+
+private struct ViewingHistory: View {
+    @Query private var history: [EarlierViewing]
+
+    init(recordID: UUID) {
+        _history = Query(filter: #Predicate<EarlierViewing> { $0.recordID == recordID },
+                         sort: \.watchedOn, order: .reverse)
+    }
+
+    var body: some View {
+        if !history.isEmpty {
+            DisclosureGroup("以往观看（\(history.count) 次）") {
+                ForEach(history) { item in
+                    VStack(alignment: .leading) {
+                        HStack {
+                            Text(item.watchedOn, format: .dateTime.year().month().day())
+                            Text("\(item.rating)/10")
+                            if let season = item.season { Text("第 \(season) 季") }
+                        }
+                        if !item.review.isEmpty { Text(item.review) }
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
+                }
+            }
         }
     }
 }

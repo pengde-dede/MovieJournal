@@ -40,11 +40,13 @@ final class PersistenceController {
 
         try FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
 
-        let schema = Schema(versionedSchema: MovieJournalSchemaV1.self)
+        let storeURL = storageDirectory.appendingPathComponent("MovieJournal.store")
+        try PreMigrationBackup.preserveV1(at: storeURL)
+        let schema = Schema(versionedSchema: MovieJournalSchemaV2.self)
         let configuration = ModelConfiguration(
             "MovieJournal",
             schema: schema,
-            url: storageDirectory.appendingPathComponent("MovieJournal.store"),
+            url: storeURL,
             cloudKitDatabase: .none
         )
         let container = try ModelContainer(

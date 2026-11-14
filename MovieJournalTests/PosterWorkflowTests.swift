@@ -6,8 +6,8 @@ import Testing
 @Suite("海报与保存流程")
 @MainActor
 struct PosterWorkflowTests {
-    @Test("新记录先完成海报缓存，再把相对文件名写入资料库")
-    func savingWaitsForPosterThenPersistsFilename() async throws {
+    @Test("海报下载期间可立即保存，保留补存路径")
+    func savingDuringPosterDownload() async throws {
         let fixture = try databaseFixture()
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
         let cache = ControlledPosterCache()
@@ -16,15 +16,12 @@ struct PosterWorkflowTests {
         await cache.waitForMovie()
         model.draft?.myRating = 9
         #expect(model.isLoadingPoster)
-        #expect(model.saveRecord() == nil)
-        #expect(try fixture.store.recordsNewestFirst().isEmpty)
+        #expect(model.saveRecord() != nil)
         await cache.finishMovie()
         await model.posterTask?.value
-        #expect(!model.isLoadingPoster)
-        #expect(model.saveRecord() != nil)
         let reopened = try PersistenceController.makeContainer(in: fixture.directory)
         let record = try #require(RecordStore(context: reopened.mainContext).recordsNewestFirst().first)
-        #expect(record.posterFilename == PosterCache.filename(for: Fixtures.movie.posterPath))
+        #expect(record.posterPath == Fixtures.movie.posterPath)
         #expect(record.myRating == 9)
     }
 
@@ -93,7 +90,7 @@ struct PosterWorkflowTests {
     }
 }
 
-private nonisolated struct ImmediateCatalog: MediaCatalogServing {
+nonisolated struct ImmediateCatalog: MediaCatalogServing {
     func search(title: String) async throws -> [MediaSearchResult] { [Fixtures.movie, Fixtures.series] }
     func details(for candidate: MediaSearchResult) async throws -> MediaDetails { Fixtures.details(candidate) }
     func supplementalRatings(imdbID: String?) async throws -> SupplementalRatingsResult { .notConfigured }

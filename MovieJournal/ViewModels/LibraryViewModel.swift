@@ -21,10 +21,15 @@ final class LibraryViewModel {
     private var didPrepareLibrary = false
     private var cacheRevision = 0
 
-    func matchingRecords(in records: [ViewingRecord]) -> [ViewingRecord] {
+    func matchingRecords(in records: [ViewingRecord], sort: LibrarySort = .added) -> [ViewingRecord] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return records.filter {
+        let matches = records.filter {
             mediaFilter.includes($0.mediaType) && (query.isEmpty || Self.record($0, matches: query))
+        }
+        switch sort {
+        case .added: return matches
+        case .watched: return matches.sorted { $0.watchedOn > $1.watchedOn }
+        case .rating: return matches.sorted { $0.myRating > $1.myRating }
         }
     }
 
@@ -119,4 +124,10 @@ final class LibraryViewModel {
             posterMessage = "\(failures) 张海报暂未保存到本机。\(firstError ?? "") 已保存的文字资料仍可查看；联网后可重试。"
         }
     }
+}
+
+enum LibrarySort: String, CaseIterable {
+    case added = "最近添加"
+    case watched = "最近观看"
+    case rating = "个人高分"
 }

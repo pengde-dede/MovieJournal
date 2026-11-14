@@ -19,6 +19,7 @@ nonisolated protocol PosterCaching: Sendable {
 }
 
 nonisolated protocol PosterFileManaging: PosterCaching {
+    func restorePoster(_ data: Data, filename: String) async throws
     func existingFilename(path: String?, filename: String?) async -> String?
     func readData(filename: String) async throws -> Data
     func cleanupAtStartup(referencedFilenames: Set<String>) async throws -> Int
@@ -165,4 +166,19 @@ nonisolated enum PosterImageData {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return false }
         return CGImageSourceCreateImageAtIndex(source, 0, nil) != nil
     }
+}
+
+extension PosterCache {
+    func restorePoster(_ data: Data, filename: String) async throws {
+        guard let directory, let url = fileURL(filename), PosterImageData.isValid(data) else {
+            throw PosterCacheError.invalidImage
+        }
+        if readLocal(filename) != nil { return }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try data.write(to: url, options: .atomic)
+    }
+}
+
+extension PosterFileManaging {
+    func restorePoster(_ data: Data, filename: String) async throws { throw PosterCacheError.storageUnavailable }
 }

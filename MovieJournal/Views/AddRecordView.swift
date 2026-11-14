@@ -5,6 +5,8 @@ struct AddRecordView: View {
     @Environment(SettingsViewModel.self) private var settings
     @State private var model: AddRecordViewModel
     @FocusState private var isSearchFocused: Bool
+    @State private var pendingAction: (() -> Void)?
+    @State private var confirmDiscard = false
     let openRecord: (UUID) -> Void
 
     init(catalog: any MediaCatalogServing, store: RecordStore, posters: any PosterCaching, openRecord: @escaping (UUID) -> Void) {
@@ -17,7 +19,7 @@ struct AddRecordView: View {
             HStack {
                 Text("添加观影记录").font(.title2.bold())
                 Spacer()
-                Button("取消") { dismiss() }
+                Button("取消") { protectDraft { dismiss() } }
                     .keyboardShortcut(.cancelAction)
             }
             .padding(.horizontal, 20).padding(.vertical, 16)
@@ -28,16 +30,42 @@ struct AddRecordView: View {
             Divider()
             HSplitView {
                 searchPane
-                    .frame(minWidth: 270, idealWidth: 310, maxWidth: 360, maxHeight: .infinity, alignment: .top)
+                    .frame(minWidth: 220, idealWidth: 310, maxWidth: 360, maxHeight: .infinity, alignment: .top)
                 detailsPane
-                    .frame(minWidth: 570, maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(minWidth: 440, maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if let draft = model.draft {
+                Divider()
+                HStack {
+                    Spacer()
+                    Button("保存观影记录") {
+                        if let id = model.saveRecord() { openRecord(id) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(model.isSaving || draft.validationMessage != nil)
+                }
+                .padding(14)
+            }
         }
-        .frame(width: 1040, height: 740)
+        .frame(minWidth: 740, idealWidth: 920, maxWidth: 1100, minHeight: 500, idealHeight: 640, maxHeight: 860)
+        .interactiveDismissDisabled(model.hasPersonalEdits)
+        .alert("放弃未保存的观影信息？", isPresented: $confirmDiscard) {
+            Button("继续填写", role: .cancel) { pendingAction = nil }
+            Button("放弃更改", role: .destructive) { let action = pendingAction; pendingAction = nil; action?() }
+        }
         .task { isSearchFocused = true }
         .onChange(of: model.searchMode) { _, _ in isSearchFocused = true }
         .onDisappear { model.cancelPendingWork() }
+    }
+
+    private func protectDraft(_ action: @escaping () -> Void) {
+        if model.hasPersonalEdits {
+            pendingAction = action
+            confirmDiscard = true
+        } else {
+            action()
+        }
     }
 
     private var searchBar: some View {
@@ -58,7 +86,7 @@ struct AddRecordView: View {
                     TextField(isDirectorMode ? "输入导演名字，例如：诺兰" : "输入电影或剧集片名", text: $model.query)
                         .textFieldStyle(.plain)
                         .focused($isSearchFocused)
-                        .onSubmit { model.search() }
+                        .onSubmit { protectDraft { model.search() } }
                         .accessibilityLabel(isDirectorMode ? "联网搜索导演" : "联网搜索片名")
                     if !model.query.isEmpty {
                         Button { model.query = ""; isSearchFocused = true } label: {
@@ -75,7 +103,7 @@ struct AddRecordView: View {
                     RoundedRectangle(cornerRadius: 10)
                         .strokeBorder(isSearchFocused ? Color.accentColor : Color.secondary.opacity(0.25), lineWidth: 1)
                 }
-                Button("搜索") { model.search() }
+                Button("搜索") { protectDraft { model.search() } }
                     .buttonStyle(.borderedProminent).controlSize(.large)
                     .disabled(model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
@@ -109,7 +137,7 @@ struct AddRecordView: View {
         if model.isSearching {
             ProgressView("正在搜索…").controlSize(.small)
         } else if let error = model.searchError {
-            failure(title: "搜索失败", message: error) { model.search() }
+            failure(title: "搜索失败", message: error) { protectDraft { model.search() } }
         } else if model.searchMode == .director {
             directorResults.padding(16)
         } else if model.results.isEmpty {
@@ -181,7 +209,7 @@ struct AddRecordView: View {
     }
 
     private func candidateButton(_ candidate: MediaSearchResult, tags: [String] = []) -> some View {
-        Button { model.select(candidate) } label: {
+        Button { protectDraft { model.select(candidate) } } label: {
             HStack(alignment: .top, spacing: 12) {
                 SearchPosterView(path: candidate.posterPath).frame(width: 52)
                 VStack(alignment: .leading, spacing: 8) {
@@ -227,7 +255,11 @@ struct AddRecordView: View {
         } else if let draft = RecordDraftBinding.make($model.draft) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    MediaInformationView(details: draft.wrappedValue.details, posterFilename: draft.wrappedValue.posterFilename)
+                    Text(draft.wrappedValue.details.title).font(.title2.bold())
+                    RecordEditorView(draft: draft)
+                    DisclosureGroup("影片资料与平台评分") {
+                        MediaInformationView(details: draft.wrappedValue.details, posterFilename: draft.wrappedValue.posterFilename)
+                    }
                     if model.isLoadingSupplemental {
                         HStack {
                             ProgressView().controlSize(.small)
@@ -246,19 +278,11 @@ struct AddRecordView: View {
                         Text(message).font(.callout).foregroundStyle(.secondary)
                         Button("重试海报") { model.retryPoster() }
                     }
-                    RecordEditorView(draft: draft)
                     if let error = model.saveError {
                         Label(error, systemImage: "exclamationmark.triangle")
                             .foregroundStyle(.red)
                     }
-                    HStack {
-                        Spacer()
-                        Button("保存观影记录") {
-                            if let id = model.saveRecord() { openRecord(id) }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(model.isSaving || model.isLoadingPoster || draft.wrappedValue.validationMessage != nil)
-                    }
+
                 }
                 .padding(24)
             }

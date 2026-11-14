@@ -6,6 +6,7 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            LibraryGlassSettings()
             ForEach(APIKeyProvider.allCases) { provider in
                 APIKeySection(provider: provider, settings: settings)
             }

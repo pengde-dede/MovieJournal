@@ -10,9 +10,12 @@ final class EditRecordViewModel {
     private(set) var saveError: String?
     private(set) var didSave = false
 
-    init(record: ViewingRecord, store: RecordStore) {
+    let isRewatch: Bool
+
+    init(record: ViewingRecord, store: RecordStore, isRewatch: Bool = false) {
+        self.isRewatch = isRewatch
         recordID = record.id
-        draft = RecordDraft(record: record)
+        draft = isRewatch ? RecordDraft(details: MediaDetails(record: record)) : RecordDraft(record: record)
         self.store = store
     }
 
@@ -25,8 +28,12 @@ final class EditRecordViewModel {
         }
         guard let rating = draft.myRating else { return false }
         do {
-            try store.updatePersonalInformation(recordID: recordID, watchedOn: draft.watchedOn,
-                myRating: rating, shortReview: draft.shortReview, watchedSeason: draft.watchedSeason)
+            if isRewatch {
+                try store.addViewing(recordID: recordID, draft: draft)
+            } else {
+                try store.updatePersonalInformation(recordID: recordID, watchedOn: draft.watchedOn,
+                    myRating: rating, shortReview: draft.shortReview, watchedSeason: draft.watchedSeason)
+            }
             didSave = true
             return true
         } catch {

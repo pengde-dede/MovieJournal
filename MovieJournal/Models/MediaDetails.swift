@@ -16,7 +16,7 @@ nonisolated struct PlatformRatings: Equatable, Sendable {
     let rottenTomatoes: Int?
 }
 
-nonisolated struct MediaDetails: Equatable, Sendable {
+nonisolated struct MediaDetails: Codable, Equatable, Sendable {
     var tmdbID: Int
     var mediaType: MediaType
     var title: String

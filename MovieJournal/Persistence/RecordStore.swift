@@ -72,11 +72,25 @@ final class RecordStore {
         if record.mediaType == .tv, (watchedSeason ?? 0) < 1 {
             throw SaveError.invalidSeason
         }
+        // Editing the latest visit may place it before an earlier one.
+        var descriptor = FetchDescriptor<EarlierViewing>(
+            predicate: #Predicate { $0.recordID == recordID },
+            sortBy: [SortDescriptor(\.watchedOn, order: .reverse)])
+        descriptor.fetchLimit = 1
+        let previous = try context.fetch(descriptor).first
         // 只更新个人信息，不用旧草稿覆盖平台资料或其他窗口补存的海报引用。
         record.watchedOn = watchedOn
         record.myRating = myRating
         record.shortReview = shortReview.trimmingCharacters(in: .whitespacesAndNewlines)
         record.watchedSeason = record.mediaType == .tv ? watchedSeason : nil
+        if let previous, previous.watchedOn > watchedOn {
+            let promoted = (previous.watchedOn, previous.rating, previous.review, previous.season)
+            previous.watchedOn = record.watchedOn
+            previous.rating = record.myRating
+            previous.review = record.shortReview
+            previous.season = record.watchedSeason
+            (record.watchedOn, record.myRating, record.shortReview, record.watchedSeason) = promoted
+        }
         record.updatedAt = .now
         do { try saveChanges() }
         catch {
@@ -101,8 +115,30 @@ final class RecordStore {
         }
     }
 
+    func addViewing(recordID: UUID, draft: RecordDraft) throws {
+        let record = try requiredRecord(id: recordID)
+        if let message = draft.validationMessage { throw RecordDraft.DraftError.invalid(message) }
+        guard let rating = draft.myRating else { throw SaveError.invalidRating }
+        let review = draft.shortReview.trimmingCharacters(in: .whitespacesAndNewlines)
+        if draft.watchedOn < record.watchedOn {
+            context.insert(EarlierViewing(recordID: recordID, watchedOn: draft.watchedOn,
+                                          rating: rating, review: review, season: draft.watchedSeason))
+        } else {
+            context.insert(EarlierViewing(recordID: recordID, watchedOn: record.watchedOn,
+                                          rating: record.myRating, review: record.shortReview, season: record.watchedSeason))
+            record.watchedOn = draft.watchedOn
+            record.myRating = rating
+            record.shortReview = review
+            record.watchedSeason = draft.watchedSeason
+        }
+        record.updatedAt = .now
+        do { try saveChanges() } catch { context.rollback(); throw error }
+    }
+
     func delete(recordID: UUID) throws {
         let record = try requiredRecord(id: recordID)
+        let history = try context.fetch(FetchDescriptor<EarlierViewing>(predicate: #Predicate { $0.recordID == recordID }))
+        for viewing in history { context.delete(viewing) }
         context.delete(record)
         do { try saveChanges() }
         catch {
