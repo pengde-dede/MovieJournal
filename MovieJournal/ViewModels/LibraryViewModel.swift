@@ -33,6 +33,8 @@ final class LibraryViewModel {
             if $0.watchedOn == $1.watchedOn { return $0.createdAt > $1.createdAt }
             return ($0.watchedOn ?? .distantPast) > ($1.watchedOn ?? .distantPast)
         }
+        case .titleAscending, .titleDescending, .releaseNewest, .releaseOldest:
+            return sort.sortByTitleOrRelease(matches)
         case .rating: return matches.sorted {
             if $0.myRating == $1.myRating { return $0.createdAt > $1.createdAt }
             return ($0.myRating ?? 0) > ($1.myRating ?? 0)
@@ -138,4 +140,40 @@ enum LibrarySort: String, CaseIterable {
     case added = "最近添加"
     case watched = "最近观看"
     case rating = "个人高分"
+    case titleAscending = "片名首字母：A → Z"
+    case titleDescending = "片名首字母：Z → A"
+    case releaseNewest = "发行年份：新 → 旧"
+    case releaseOldest = "发行年份：旧 → 新"
+
+    @MainActor
+    fileprivate func sortByTitleOrRelease(_ records: [ViewingRecord]) -> [ViewingRecord] {
+        let locale = Locale(identifier: "en_US_POSIX")
+        // 每部作品只转换一次，避免在排序比较器里反复转拼音。
+        let keyed = records.map { record in
+            let latin = record.title.applyingTransform(.toLatin, reverse: false) ?? record.title
+            let key = latin.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: locale)
+                .filter { $0.isLetter || $0.isNumber }
+            return (record: record, key: key)
+        }
+        return keyed.sorted { lhs, rhs in
+            if self == .releaseNewest || self == .releaseOldest {
+                switch (lhs.record.releaseYear, rhs.record.releaseYear) {
+                case let (left?, right?) where left != right:
+                    return self == .releaseNewest ? left > right : left < right
+                case (_?, nil): return true
+                case (nil, _?): return false
+                default: break
+                }
+            }
+            // 无法生成字母或数字排序键的片名，在两个方向上都放到末尾。
+            if lhs.key.isEmpty != rhs.key.isEmpty { return !lhs.key.isEmpty }
+            let comparison = lhs.key.compare(rhs.key, options: .numeric, locale: locale)
+            if comparison != .orderedSame {
+                return self == .titleDescending ? comparison == .orderedDescending : comparison == .orderedAscending
+            }
+            // 同名作品的顺序不依赖传入数组或当前系统语言。
+            if lhs.record.createdAt != rhs.record.createdAt { return lhs.record.createdAt > rhs.record.createdAt }
+            return lhs.record.mediaKey < rhs.record.mediaKey
+        }.map(\.record)
+    }
 }

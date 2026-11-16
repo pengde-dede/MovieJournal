@@ -6,6 +6,11 @@ Keep a record of the films and TV series you watch, with posters, ratings, and s
 
 MovieJournal is a native macOS app built with SwiftUI and SwiftData. It supports macOS 14 and later, uses system frameworks, and stores your viewing records locally.
 
+## What is new in 1.2.1
+
+- The library’s “… → 排序” menu adds title A → Z / Z → A and release year newest / oldest first. Chinese titles use pinyin, and numbers use natural ordering.
+- Release data currently has year-level precision. Titles break same-year ties; unknown years always appear last. Sorting combines with search, type, and viewing-status filters, and your selection is remembered.
+
 ## What is new in 1.2.0
 
 - Track Want to watch, Watching, and Watched. Filter the library by status and change it from details or a poster’s context menu. New works default to Want to watch.
@@ -23,7 +28,7 @@ MovieJournal is a native macOS app built with SwiftUI and SwiftData. It supports
 
 ## Features
 
-- **Poster library** — Sort by date added, viewing date, or personal rating. Search titles, directors, creators, or cast members, and filter by films or TV series.
+- **Poster library** — Sort by date added, viewing date, personal rating, title, or release year. Search titles, directors, creators, or cast members, and filter by films or TV series.
 - **Online lookup** — Search TMDB and choose a work to retrieve its title, year, genres, director or creators, top five cast members, synopsis, poster, and TMDB rating.
 - **Personal viewing records** — Track viewing status, with an optional date, integer rating from 1 to 10, short review, and TV season.
 - **Additional ratings** — Configure an optional OMDb API key to retrieve IMDb and Rotten Tomatoes ratings when adding a work.
