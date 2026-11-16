@@ -12,7 +12,11 @@ nonisolated protocol PersonCatalogServing: Sendable {
     func directedWorks(personID: Int) async throws -> [CreditedWork]
 }
 
-nonisolated struct MediaCatalogService: MediaCatalogServing, PersonCatalogServing {
+nonisolated protocol MovieSeriesCatalogServing: Sendable {
+    func movieSeries(tmdbID: Int) async throws -> MovieSeriesLookup
+}
+
+nonisolated struct MediaCatalogService: MediaCatalogServing, PersonCatalogServing, MovieSeriesCatalogServing {
     let keychain: any KeychainStoring
     let tmdb: TMDBClient
     let omdb: OMDbClient
@@ -29,6 +33,10 @@ nonisolated struct MediaCatalogService: MediaCatalogServing, PersonCatalogServin
 
     func details(for candidate: MediaSearchResult) async throws -> MediaDetails {
         try await tmdb.details(for: candidate, key: requiredTMDBKey())
+    }
+
+    func movieSeries(tmdbID: Int) async throws -> MovieSeriesLookup {
+        try await tmdb.movieSeries(tmdbID: tmdbID, key: requiredTMDBKey())
     }
 
     func searchPeople(name: String) async throws -> [PersonSearchResult] {

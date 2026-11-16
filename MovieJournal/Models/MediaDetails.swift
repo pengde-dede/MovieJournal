@@ -34,6 +34,7 @@ nonisolated struct MediaDetails: Codable, Equatable, Sendable {
     var posterPath: String?
     var fetchedAt: Date
     var informationNote: String?
+    var seriesLookup: MovieSeriesLookup? = nil
 }
 
 nonisolated enum SupplementalRatingsResult: Equatable, Sendable {
@@ -54,7 +55,7 @@ extension MediaDetails {
             creatorNames: record.creatorNames, castNames: record.castNames,
             imdbID: record.imdbID, tmdbRating: record.tmdbRating, imdbRating: record.imdbRating,
             rottenTomatoesRating: record.rottenTomatoesRating, posterPath: record.posterPath,
-            fetchedAt: record.metadataFetchedAt, informationNote: nil
+            fetchedAt: record.metadataFetchedAt, informationNote: nil, seriesLookup: record.seriesLookup
         )
     }
 }

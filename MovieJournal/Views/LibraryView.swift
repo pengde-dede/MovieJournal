@@ -5,6 +5,7 @@ struct LibraryView: View {
     let catalog: any MediaCatalogServing
     let posters: any PosterFileManaging
     let cleanup: PosterCleanupCoordinator
+    let seriesBackfill: MovieSeriesBackfill
     @Environment(\.modelContext) private var context
     @Query(sort: \ViewingRecord.createdAt, order: .reverse) private var records: [ViewingRecord]
     @State private var model = LibraryViewModel()
@@ -13,10 +14,11 @@ struct LibraryView: View {
     @State private var showingBackup = false
     @State private var isShowingAdd = false
     @State private var addingSession: UUID?
-    @State private var path: [UUID] = []
+    @State private var path: [LibraryDestination] = []
     @State private var posterRetry = 0
 
     @AppStorage("librarySort") private var sort = LibrarySort.added
+    @AppStorage("libraryDisplayMode") private var displayMode = LibraryDisplayMode.works
 
     private let columns = [GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 24)]
     nonisolated private struct PosterBatchID: Hashable {
@@ -25,19 +27,25 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        let matching = model.matchingRecords(in: records, sort: sort)
+        let matching = model.matchingRecords(in: records, sort: sort, includeSeriesNames: displayMode == .series)
         return NavigationStack(path: $path) {
             libraryContent(matching)
                 .safeAreaInset(edge: .top, spacing: 0) {
                     VStack(spacing: 0) {
                         searchControls
-                        statusControls
+                        filterAndDisplayControls
+                        seriesStatus
                         posterStatus
                     }
                 }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("观影记录")
-            .navigationDestination(for: UUID.self) { RecordDetailDestinationView(recordID: $0, cleanup: cleanup, catalog: catalog) }
+            .navigationDestination(for: LibraryDestination.self) { destination in
+                switch destination {
+                case .record(let id): RecordDetailDestinationView(recordID: id, cleanup: cleanup, catalog: catalog)
+                case .series(let id): seriesDestination(id: id)
+                }
+            }
             .toolbar {
                 ToolbarItem {
                     Menu {
@@ -68,7 +76,7 @@ struct LibraryView: View {
             .sheet(isPresented: $isShowingAdd, onDismiss: finishAdding) {
                 AddRecordView(catalog: catalog, store: RecordStore(context: context), posters: posters) { id in
                     isShowingAdd = false
-                    if path.last != id { path.append(id) }
+                    if path.last != .record(id) { path.append(.record(id)) }
                 }
             }
         }
@@ -92,9 +100,10 @@ struct LibraryView: View {
         return HStack(spacing: 18) {
             HStack {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("搜索片名、导演或主演", text: $model.searchText)
+                let prompt = displayMode == .series ? "搜索系列、片名、导演或主演" : "搜索片名、导演或主演"
+                TextField(prompt, text: $model.searchText)
                     .textFieldStyle(.plain)
-                    .accessibilityLabel("搜索片名、导演或主演")
+                    .accessibilityLabel(prompt)
                 if !model.searchText.isEmpty {
                     Button { model.searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
                         .buttonStyle(.plain).help("清除搜索")
@@ -115,6 +124,18 @@ struct LibraryView: View {
         .padding(.vertical, 8)
     }
 
+    private var filterAndDisplayControls: some View {
+        HStack(spacing: 16) {
+            statusControls
+            Spacer(minLength: 0)
+            Picker("资料库视图", selection: $displayMode) {
+                ForEach(LibraryDisplayMode.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented).labelsHidden().fixedSize()
+        }
+        .padding(.horizontal, 24).padding(.bottom, 10)
+    }
+
     private var statusControls: some View {
         @Bindable var model = model
         return Picker("观看状态筛选", selection: $model.statusFilter) {
@@ -125,8 +146,33 @@ struct LibraryView: View {
         }
         .pickerStyle(.segmented).labelsHidden()
         .frame(maxWidth: 520)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 24).padding(.bottom, 10)
+    }
+
+    @ViewBuilder
+    private var seriesStatus: some View {
+        if displayMode == .series, let seriesCatalog = catalog as? any MovieSeriesCatalogServing {
+            let pending = records.filter(\.needsSeriesLookup).count
+            if seriesBackfill.isRunning || pending > 0 || seriesBackfill.message != nil {
+                HStack(spacing: 12) {
+                    if seriesBackfill.isRunning {
+                        ProgressView().controlSize(.small)
+                        Text("正在补全系列资料（\(seriesBackfill.completed)/\(seriesBackfill.total)）…")
+                        Spacer(minLength: 8)
+                        Button("停止") { seriesBackfill.cancel() }
+                    } else {
+                        Text(seriesBackfill.message ?? "\(pending) 部电影可以补全系列资料。")
+                        Spacer(minLength: 8)
+                        if pending > 0 {
+                            Button("补全合集资料") {
+                                seriesBackfill.start(store: RecordStore(context: context), catalog: seriesCatalog)
+                            }
+                        }
+                    }
+                }
+                .font(.callout).foregroundStyle(.secondary)
+                .padding(.horizontal, 28).padding(.bottom, 10)
+            }
+        }
     }
 
     private func changeStatus(_ status: WatchStatus, record: ViewingRecord) {
@@ -206,10 +252,33 @@ struct LibraryView: View {
                 Button("清除搜索和筛选") { model.resetFilters() }
             }
         } else {
-            ScrollView {
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
-                    ForEach(matching) { record in
-                        NavigationLink(value: record.id) { RecordCard(record: record) }
+            let tiles = displayMode == .series ? model.seriesTiles(matching: matching, in: records) : matching.map(LibraryTile.record)
+            tileGrid(tiles)
+        }
+    }
+
+    @ViewBuilder
+    private func seriesDestination(id: Int) -> some View {
+        let members = records.filter { $0.seriesID == id }
+        let visible = model.matchingRecords(in: members, includeSeriesNames: true)
+        if let group = MovieSeriesGroup(members: members, visible: visible), !visible.isEmpty {
+            tileGrid(group.chronologicalRecords.map(LibraryTile.record))
+                .navigationTitle(group.series.name)
+        } else {
+            ContentUnavailableView("没有符合条件的作品", systemImage: "film.stack")
+        }
+    }
+
+    private func tileGrid(_ tiles: [LibraryTile]) -> some View {
+        ScrollView {
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
+                ForEach(tiles) { tile in
+                    switch tile {
+                    case .series(let group):
+                        NavigationLink(value: tile.id) { MovieSeriesCard(group: group) }
+                            .buttonStyle(.plain)
+                    case .record(let record):
+                        NavigationLink(value: tile.id) { RecordCard(record: record) }
                             .buttonStyle(.plain)
                             .contextMenu {
                                 ForEach(WatchStatus.allCases) { status in
@@ -220,8 +289,8 @@ struct LibraryView: View {
                             }
                     }
                 }
-                .padding(28)
             }
+            .padding(28)
         }
     }
 }

@@ -22,10 +22,12 @@ final class LibraryViewModel {
     private var didPrepareLibrary = false
     private var cacheRevision = 0
 
-    func matchingRecords(in records: [ViewingRecord], sort: LibrarySort = .added) -> [ViewingRecord] {
+    func matchingRecords(in records: [ViewingRecord], sort: LibrarySort = .added, includeSeriesNames: Bool = false) -> [ViewingRecord] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let matches = records.filter {
-            mediaFilter.includes($0.mediaType) && statusFilter.includes($0.watchStatus) && (query.isEmpty || Self.record($0, matches: query))
+            mediaFilter.includes($0.mediaType) && statusFilter.includes($0.watchStatus) &&
+                (query.isEmpty || Self.record($0, matches: query) ||
+                    (includeSeriesNames && $0.seriesName?.localizedStandardContains(query) == true))
         }
         switch sort {
         case .added: return matches
@@ -146,7 +148,7 @@ enum LibrarySort: String, CaseIterable {
     case releaseOldest = "发行年份：旧 → 新"
 
     @MainActor
-    fileprivate func sortByTitleOrRelease(_ records: [ViewingRecord]) -> [ViewingRecord] {
+    func sortByTitleOrRelease(_ records: [ViewingRecord]) -> [ViewingRecord] {
         let locale = Locale(identifier: "en_US_POSIX")
         // 每部作品只转换一次，避免在排序比较器里反复转拼音。
         let keyed = records.map { record in

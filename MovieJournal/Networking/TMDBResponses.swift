@@ -40,6 +40,24 @@ nonisolated struct TMDBDetailsResponse: Decodable, Sendable {
     let credits: Credits?
     let aggregateCredits: Credits?
     let externalIDs: ExternalIDs?
+    let collection: Collection?
+
+    struct Collection: Decodable, Sendable {
+        let id: Int
+        let name: String?
+        let posterPath: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id, name
+            case posterPath = "poster_path"
+        }
+    }
+
+    func movieSeriesLookup() throws -> MovieSeriesLookup {
+        guard let collection else { return MovieSeriesLookup(series: nil) }
+        guard collection.id > 0, let name = collection.name.nonEmpty else { throw APIError.invalidResponse }
+        return MovieSeriesLookup(series: MovieSeries(id: collection.id, name: name, posterPath: collection.posterPath.nonEmpty))
+    }
 
     struct Genre: Decodable, Sendable { let name: String? }
     struct Person: Decodable, Sendable {
@@ -58,6 +76,7 @@ nonisolated struct TMDBDetailsResponse: Decodable, Sendable {
     }
     enum CodingKeys: String, CodingKey {
         case id, title, name, overview, genres, credits
+        case collection = "belongs_to_collection"
         case originalTitle = "original_title", originalName = "original_name"
         case releaseDate = "release_date", firstAirDate = "first_air_date", posterPath = "poster_path"
         case voteAverage = "vote_average", voteCount = "vote_count", imdbID = "imdb_id"

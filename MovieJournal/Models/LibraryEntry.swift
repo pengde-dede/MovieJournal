@@ -19,7 +19,7 @@ nonisolated struct ViewingEvent: Codable, Equatable, Sendable {
     let season: Int?
 }
 
-extension MovieJournalSchemaV4.ViewingRecord {
+extension ViewingRecord {
     var libraryEntry: LibraryEntry {
         LibraryEntry(id: id, mediaKey: mediaKey, status: watchStatus, createdAt: createdAt,
                      updatedAt: updatedAt, latestViewingID: latestViewingID)
@@ -48,7 +48,7 @@ extension MovieJournalSchemaV4.ViewingRecord {
     }
 }
 
-extension MovieJournalSchemaV4.EarlierViewing {
+extension EarlierViewing {
     var viewing: ViewingEvent? {
         guard let viewingID else { return nil }
         return ViewingEvent(id: viewingID, libraryEntryID: recordID, date: watchedOn,
@@ -61,5 +61,15 @@ extension MovieJournalSchemaV4.EarlierViewing {
         rating = viewing.rating
         review = viewing.review
         season = viewing.season
+    }
+}
+
+extension MovieJournalSchemaV4.ViewingRecord {
+    func assignLatestViewingIDIfNeeded(hasHistory: Bool = false) {
+        guard latestViewingID == nil else { return }
+        if hasHistory || watchStatus == .watched || watchedOn != nil || myRating != nil
+            || !shortReview.isEmpty || watchedSeason != nil {
+            latestViewingID = UUID()
+        }
     }
 }

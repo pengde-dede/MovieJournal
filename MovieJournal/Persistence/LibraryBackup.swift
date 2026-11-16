@@ -43,6 +43,9 @@ nonisolated struct LibraryBackup: Codable {
         var status: WatchStatus? = nil
 
         var key: String { details.mediaType.mediaKey(tmdbID: details.tmdbID) }
+        var artworkFilenames: [String] {
+            [filename, PosterCache.filename(for: details.seriesLookup?.series?.posterPath)].compactMap { $0 }
+        }
         var libraryEntry: LibraryEntry {
             LibraryEntry(id: id, mediaKey: key, status: status ?? .watched, createdAt: created,
                          updatedAt: updated, latestViewingID: latest.id)
@@ -57,6 +60,7 @@ nonisolated struct LibraryBackup: Codable {
                 overview: d.overview, overviewLanguage: d.overviewLanguage, creatorNames: d.creatorNames,
                 castNames: d.castNames, imdbID: d.imdbID, tmdbRating: d.tmdbRating, imdbRating: d.imdbRating,
                 rottenTomatoesRating: d.rottenTomatoesRating, posterPath: d.posterPath, posterFilename: filename,
+                seriesLookup: d.seriesLookup,
                 watchStatus: entry.status, latestViewingID: entry.latestViewingID, watchedOn: latest.date,
                 myRating: latest.rating, shortReview: latest.review, watchedSeason: latest.season,
                 createdAt: entry.createdAt, metadataFetchedAt: d.fetchedAt)
@@ -85,7 +89,7 @@ nonisolated struct LibraryBackup: Codable {
                 history: earlier, filename: item.posterFilename ?? PosterCache.filename(for: item.posterPath), status: entry.status)
         }
         var posters: [String: Data] = [:]
-        for name in Set(entries.compactMap(\.filename)) {
+        for name in Set(entries.flatMap(\.artworkFilenames)) {
             do { posters[name] = try await cache.readData(filename: name) }
             catch PosterCacheError.localFileUnavailable { continue }
         }
@@ -114,6 +118,12 @@ nonisolated struct LibraryBackup: Codable {
                       && (version != 1 || ($0.date != nil && $0.rating != nil)) }),
                   entry.filename == nil || entry.filename == PosterCache.filename(for: entry.details.posterPath)
             else { throw Invalid.archive }
+            if let lookup = entry.details.seriesLookup {
+                guard entry.details.mediaType == .movie else { throw Invalid.archive }
+                if let series = lookup.series, series.id <= 0 || Optional(series.name).nonEmpty == nil {
+                    throw Invalid.archive
+                }
+            }
             guard keys.insert(entry.key).inserted else { continue }
             guard ids.insert(entry.id).inserted else { throw Invalid.archive }
             if version == 3 {
@@ -132,7 +142,7 @@ nonisolated struct LibraryBackup: Codable {
     @MainActor
     func restore(context: ModelContext, cache: any PosterFileManaging) async throws -> Int {
         let pending = try additions(to: context)
-        for name in Set(pending.compactMap(\.filename)) {
+        for name in Set(pending.flatMap(\.artworkFilenames)) {
             if let data = posters[name] { try await cache.restorePoster(data, filename: name) }
         }
         // A second window may have added a work while files were being restored.

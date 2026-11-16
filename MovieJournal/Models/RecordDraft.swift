@@ -61,6 +61,7 @@ struct RecordDraft {
             rottenTomatoesRating: details.rottenTomatoesRating,
             posterPath: details.posterPath,
             posterFilename: posterFilename,
+            seriesLookup: details.seriesLookup,
             watchStatus: watchStatus,
             watchedOn: watchedOn,
             myRating: myRating,

@@ -3,14 +3,16 @@ import SwiftData
 
 nonisolated enum MovieJournalMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [MovieJournalSchemaV1.self, MovieJournalSchemaV2.self, MovieJournalSchemaV3.self, MovieJournalSchemaV4.self]
+        [MovieJournalSchemaV1.self, MovieJournalSchemaV2.self, MovieJournalSchemaV3.self,
+         MovieJournalSchemaV4.self, MovieJournalSchemaV5.self]
     }
 
     static var stages: [MigrationStage] {
         [.lightweight(fromVersion: MovieJournalSchemaV1.self, toVersion: MovieJournalSchemaV2.self),
          .lightweight(fromVersion: MovieJournalSchemaV2.self, toVersion: MovieJournalSchemaV3.self),
          .custom(fromVersion: MovieJournalSchemaV3.self, toVersion: MovieJournalSchemaV4.self,
-                 willMigrate: nil, didMigrate: assignViewingIDs)]
+                 willMigrate: nil, didMigrate: assignViewingIDs),
+         .lightweight(fromVersion: MovieJournalSchemaV4.self, toVersion: MovieJournalSchemaV5.self)]
     }
 
     private static func assignViewingIDs(in context: ModelContext) throws {
