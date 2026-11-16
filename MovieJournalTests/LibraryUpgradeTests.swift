@@ -30,6 +30,7 @@ struct LibraryUpgradeTests {
         let current = try PersistenceController.makeContainer(in: dir)
         let item = try #require(current.mainContext.fetch(FetchDescriptor<ViewingRecord>()).first)
         #expect(item.id == id && item.shortReview == "初看")
+        #expect(item.latestViewing?.id != nil && item.latestViewing?.rating == 8)
         let before = try openV1(dir.appendingPathComponent("Backups/BeforeV2.store"))
         #expect(try before.mainContext.fetch(FetchDescriptor<MovieJournalSchemaV1.ViewingRecord>()).first?.id == id)
     }
@@ -93,6 +94,9 @@ struct LibraryUpgradeTests {
         #expect(imported.myRating == 10 && imported.createdAt == record.createdAt)
         let history = try reopened.mainContext.fetch(FetchDescriptor<EarlierViewing>())
         #expect(history.count == 2 && history.contains { $0.review == "初看" && $0.rating == 8 })
+        #expect(imported.latestViewingID == record.latestViewingID)
+        let backedUp = try #require(backup.entries.first)
+        #expect(Set(history.compactMap(\.viewingID)) == Set(backedUp.history.compactMap(\.id)))
         try RecordStore(context: reopened.mainContext).delete(recordID: imported.id)
         #expect(try reopened.mainContext.fetchCount(FetchDescriptor<EarlierViewing>()) == 0)
     }

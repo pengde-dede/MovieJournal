@@ -19,8 +19,8 @@ enum PreMigrationBackup {
         try files.moveItem(at: temporary, to: destination)
     }
 
-    // Read the on-disk columns before opening the new schema. This also supports a V1 → V3 jump.
-    static func preserveBeforeV3(at store: URL) throws {
+    // Inspect the existing store before SwiftData changes its schema, including direct V1/V2 upgrades.
+    static func preserveBeforeModelChanges(at store: URL) throws {
         let files = FileManager.default
         guard files.fileExists(atPath: store.path) else { return }
         var database: OpaquePointer?
@@ -36,9 +36,18 @@ enum PreMigrationBackup {
             step = sqlite3_step(statement)
         }
         guard step == SQLITE_DONE, !columns.isEmpty else { throw Failure.snapshot }
-        guard !columns.contains("ZWATCHSTATUSRAWVALUE") else { return }
+        if !columns.contains("ZWATCHSTATUSRAWVALUE") {
+            try preserve(at: store, filename: "BeforeV3.store")
+        }
+        if !columns.contains("ZLATESTVIEWINGID") {
+            try preserve(at: store, filename: "BeforeV4.store")
+        }
+    }
+
+    private static func preserve(at store: URL, filename: String) throws {
+        let files = FileManager.default
         let folder = store.deletingLastPathComponent().appendingPathComponent("Backups", isDirectory: true)
-        let destination = folder.appendingPathComponent("BeforeV3.store")
+        let destination = folder.appendingPathComponent(filename)
         guard !files.fileExists(atPath: destination.path) else { return }
         try files.createDirectory(at: folder, withIntermediateDirectories: true)
         let temporary = folder.appendingPathComponent(UUID().uuidString)

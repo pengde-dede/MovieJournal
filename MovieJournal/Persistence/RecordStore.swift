@@ -81,6 +81,7 @@ final class RecordStore {
         record.myRating = myRating
         record.shortReview = shortReview.trimmingCharacters(in: .whitespacesAndNewlines)
         record.watchedSeason = record.mediaType == .tv ? watchedSeason : nil
+        record.assignLatestViewingIDIfNeeded()
         record.updatedAt = .now
         do { try promoteLatestViewing(record); try saveChanges() }
         catch {
@@ -94,6 +95,7 @@ final class RecordStore {
         guard record.watchStatus != status else { return }
         record.watchStatus = status
         if status == .watched, record.watchedOn == nil { record.watchedOn = .now }
+        record.assignLatestViewingIDIfNeeded()
         record.updatedAt = .now
         do { try saveChanges() } catch { context.rollback(); throw error }
     }
@@ -118,18 +120,14 @@ final class RecordStore {
         let record = try requiredRecord(id: recordID)
         if let message = draft.validationMessage { throw RecordDraft.DraftError.invalid(message) }
         guard record.watchStatus == .watched, draft.watchStatus == .watched else { throw SaveError.invalidViewing }
-        let rating = draft.myRating
-        let review = draft.shortReview.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let newDate = draft.watchedOn, let currentDate = record.watchedOn, newDate < currentDate {
-            context.insert(EarlierViewing(recordID: recordID, watchedOn: draft.watchedOn,
-                                          rating: rating, review: review, season: draft.watchedSeason))
+        let viewing = ViewingEvent(libraryEntryID: recordID, date: draft.watchedOn, rating: draft.myRating,
+                                   review: draft.shortReview.trimmingCharacters(in: .whitespacesAndNewlines),
+                                   season: record.mediaType == .tv ? draft.watchedSeason : nil)
+        if let newDate = viewing.date, let currentDate = record.watchedOn, newDate < currentDate {
+            context.insert(EarlierViewing(viewing: viewing))
         } else {
-            context.insert(EarlierViewing(recordID: recordID, watchedOn: record.watchedOn,
-                                          rating: record.myRating, review: record.shortReview, season: record.watchedSeason))
-            record.watchedOn = draft.watchedOn
-            record.myRating = rating
-            record.shortReview = review
-            record.watchedSeason = draft.watchedSeason
+            if let current = record.latestViewing { context.insert(EarlierViewing(viewing: current)) }
+            record.setLatestViewing(viewing)
         }
         record.updatedAt = .now
         do { try promoteLatestViewing(record); try saveChanges() } catch { context.rollback(); throw error }
@@ -137,20 +135,16 @@ final class RecordStore {
 
     // Unknown dates stay unknown; when both visits have dates, keep the latest on the work.
     private func promoteLatestViewing(_ record: ViewingRecord) throws {
-        guard let date = record.watchedOn else { return }
+        guard let current = record.latestViewing, let date = current.date else { return }
         let identifier = record.id
         var descriptor = FetchDescriptor<EarlierViewing>(
             predicate: #Predicate { $0.recordID == identifier },
             sortBy: [SortDescriptor(\.watchedOn, order: .reverse)])
         descriptor.fetchLimit = 1
         guard let previous = try context.fetch(descriptor).first,
-              let previousDate = previous.watchedOn, previousDate > date else { return }
-        let promoted = (previous.watchedOn, previous.rating, previous.review, previous.season)
-        previous.watchedOn = record.watchedOn
-        previous.rating = record.myRating
-        previous.review = record.shortReview
-        previous.season = record.watchedSeason
-        (record.watchedOn, record.myRating, record.shortReview, record.watchedSeason) = promoted
+              let promoted = previous.viewing, let previousDate = promoted.date, previousDate > date else { return }
+        previous.replaceViewing(current)
+        record.setLatestViewing(promoted)
     }
 
     func delete(recordID: UUID) throws {
@@ -184,6 +178,7 @@ final class RecordStore {
         if record.mediaType == .tv, let season = record.watchedSeason, season < 1 {
             throw SaveError.invalidSeason
         }
+        record.assignLatestViewingIDIfNeeded()
         context.insert(record)
         do {
             try saveChanges()

@@ -122,6 +122,3 @@ nonisolated enum MovieJournalSchemaV3: VersionedSchema {
         }
     }
 }
-
-typealias EarlierViewing = MovieJournalSchemaV3.EarlierViewing
-typealias ViewingRecord = MovieJournalSchemaV3.ViewingRecord

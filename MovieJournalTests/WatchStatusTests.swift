@@ -152,7 +152,7 @@ struct WatchStatusTests {
         try store.addViewing(recordID: watched.id, draft: rewatch)
         let snapshot = try await LibraryBackup.snapshot(context: source.mainContext, cache: cache)
         let backup = try JSONDecoder().decode(LibraryBackup.self, from: JSONEncoder().encode(snapshot))
-        #expect(backup.version == 2)
+        #expect(backup.version == 3)
         #expect(try await backup.restore(context: target.mainContext, cache: cache) == 3)
         try RecordStore(context: target.mainContext).setWatchStatus(.watching, recordID: watched.id)
         #expect(try await backup.restore(context: target.mainContext, cache: cache) == 0)
@@ -179,6 +179,7 @@ struct WatchStatusTests {
         #expect(try await decoded.restore(context: target.mainContext, cache: cache) == 1)
         let restored = try #require(RecordStore(context: target.mainContext).recordsNewestFirst().first)
         #expect(restored.watchStatus == .watched && restored.myRating == 8)
+        #expect(restored.latestViewingID != nil)
         var malformed = old
         malformed.version = 2
         #expect(throws: LibraryBackup.Invalid.self) { try malformed.additions(to: target.mainContext) }
@@ -235,6 +236,7 @@ struct WatchStatusTests {
         #expect(item.id == id && item.watchStatus == .watched && item.myRating == 9 && item.shortReview == "重看" && item.watchedSeason == 3)
         let history = try current.mainContext.fetch(FetchDescriptor<EarlierViewing>())
         #expect(history.count == 1 && history.first?.recordID == id && history.first?.rating == 8)
+        #expect(item.latestViewingID != nil && history.first?.viewingID != nil)
         let snapshot = dir.appendingPathComponent("Backups/BeforeV3.store")
         let originalBytes = try Data(contentsOf: snapshot)
         let before = try openV2(snapshot)
