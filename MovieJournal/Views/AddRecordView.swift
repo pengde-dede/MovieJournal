@@ -3,6 +3,7 @@ import SwiftUI
 struct AddRecordView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(SettingsViewModel.self) private var settings
+    @Environment(TrialSettingsViewModel.self) private var trial: TrialSettingsViewModel?
     @State private var model: AddRecordViewModel
     @FocusState private var isSearchFocused: Bool
     @State private var pendingAction: (() -> Void)?
@@ -108,9 +109,9 @@ struct AddRecordView: View {
                     .disabled(model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .frame(maxWidth: 760)
-            if settings.status(for: .tmdb) == .missing {
+            if settings.status(for: .tmdb) == .missing, trial?.isConnected != true {
                 HStack(spacing: 10) {
-                    Text("请先在设置中填写 TMDB Key。")
+                    Text(trial == nil ? "请先在设置中填写 TMDB Key。" : "请在设置中连接好友试用服务，或填写 TMDB Key。")
                         .font(.callout).foregroundStyle(.secondary)
                     SettingsLink { Text("打开设置") }
                 }

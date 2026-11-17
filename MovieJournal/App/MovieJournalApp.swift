@@ -4,6 +4,7 @@ import SwiftUI
 struct MovieJournalApp: App {
     @State private var persistence = PersistenceController()
     @State private var settings: SettingsViewModel
+    @State private var trialSettings: TrialSettingsViewModel
     @State private var posterCleanup: PosterCleanupCoordinator
     @State private var metadataBackfill = MovieMetadataBackfill()
     private let catalog: any MediaCatalogServing
@@ -19,7 +20,9 @@ struct MovieJournalApp: App {
         posters = posterCache
         _posterCleanup = State(initialValue: PosterCleanupCoordinator(cache: posterCache))
         thumbnails = PosterThumbnailCache(transport: transport)
-        catalog = MediaCatalogService(keychain: keychain, tmdb: tmdb, omdb: omdb)
+        let trialAccess = TrialCatalogAccess(keychain: keychain)
+        catalog = MediaCatalogService(keychain: keychain, tmdb: tmdb, omdb: omdb, trial: trialAccess)
+        _trialSettings = State(initialValue: TrialSettingsViewModel(access: trialAccess))
         _settings = State(initialValue: SettingsViewModel(keychain: keychain, validator: APIKeyValidator(tmdb: tmdb, omdb: omdb)))
     }
 
@@ -29,6 +32,8 @@ struct MovieJournalApp: App {
                         metadataBackfill: metadataBackfill)
                 .environment(\.posterThumbnails, thumbnails)
                 .environment(settings)
+                .environment(trialSettings)
+                .task { await trialSettings.refresh() }
                 .environment(\.locale, Locale(identifier: "zh_CN"))
         }
         .defaultSize(width: 920, height: 680)
@@ -36,6 +41,7 @@ struct MovieJournalApp: App {
         Settings {
             SettingsView()
                 .environment(settings)
+                .environment(trialSettings)
                 .environment(\.locale, Locale(identifier: "zh_CN"))
         }
     }

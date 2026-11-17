@@ -24,6 +24,7 @@ nonisolated struct APIKeyValidator: APIKeyValidating {
             switch provider {
             case .tmdb: try await tmdb.authenticate(key: key)
             case .omdb: _ = try await omdb.ratings(imdbID: "tt0111161", key: key)
+            case .trial: return .unavailable("请在好友试用区域连接服务。")
             }
             return .valid
         } catch is CancellationError {

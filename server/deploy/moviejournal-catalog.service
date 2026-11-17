@@ -1,0 +1,21 @@
+[Unit]
+Description=MovieJournal trial catalog
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+EnvironmentFile=/etc/moviejournal/catalog.env
+ExecStart=/usr/bin/java -Djava.awt.headless=true -Xms32m -Xmx128m -jar /opt/moviejournal-catalog/catalog.jar
+Restart=on-failure
+RestartSec=5
+MemoryMax=320M
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

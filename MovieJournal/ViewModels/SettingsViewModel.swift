@@ -75,7 +75,7 @@ final class SettingsViewModel {
         guard !isWorking else { return }
         isWorking = true
         defer { isWorking = false }
-        for provider in APIKeyProvider.allCases {
+        for provider in APIKeyProvider.personalKeys {
             do {
                 let exists = try await keychain.contains(provider)
                 let newStatus: KeyStatus = exists ? .saved : .missing

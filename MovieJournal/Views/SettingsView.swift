@@ -2,12 +2,14 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(SettingsViewModel.self) private var settings
+    @Environment(TrialSettingsViewModel.self) private var trial: TrialSettingsViewModel?
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Form {
             LibraryGlassSettings()
-            ForEach(APIKeyProvider.allCases) { provider in
+            if let trial { TrialSettingsSection(trial: trial) }
+            ForEach(APIKeyProvider.personalKeys) { provider in
                 APIKeySection(provider: provider, settings: settings)
             }
             Section("本机存储") {
@@ -39,10 +41,40 @@ struct SettingsView: View {
         .padding()
         .frame(width: 600, height: 720)
         .navigationTitle("设置")
-        .task { await settings.refresh() }
+        .task { await settings.refresh(); await trial?.refresh() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await settings.refresh() } }
         }
+    }
+}
+
+private struct TrialSettingsSection: View {
+    @Bindable var trial: TrialSettingsViewModel
+
+    var body: some View {
+        Section("好友试用") {
+            if trial.isConnected, let connection = trial.connection {
+                Label("已连接试用服务", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                LabeledContent("到期时间", value: Date(timeIntervalSince1970: Double(connection.expiresAt)).formatted())
+                Button("断开试用服务") { Task { await trial.disconnect() } }.disabled(trial.isWorking)
+            } else {
+                TextField("试用服务 HTTPS 地址", text: $trial.server)
+                SecureField("邀请码", text: $trial.invite)
+                    .onSubmit { if canConnect { Task { await trial.activate() } } }
+                Button("连接试用服务") { Task { await trial.activate() } }.disabled(!canConnect)
+                if trial.connection != nil {
+                    Button("清除已到期的试用连接") { Task { await trial.disconnect() } }.disabled(trial.isWorking)
+                }
+            }
+            if let error = trial.error {
+                Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+            }
+        }
+    }
+
+    private var canConnect: Bool {
+        !trial.isWorking && !trial.server.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !trial.invite.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
 

@@ -33,17 +33,24 @@ nonisolated enum APIError: LocalizedError, Equatable, Sendable {
     }
 }
 
+nonisolated private final class NoHTTPRedirects: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
+        completionHandler(nil)
+    }
+}
+
 actor HTTPClient: HTTPTransport {
     private let session: URLSession
 
-    init() {
+    init(followsRedirects: Bool = true) {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 20
         configuration.timeoutIntervalForResource = 30
         configuration.waitsForConnectivity = false
         configuration.urlCache = nil
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        session = URLSession(configuration: configuration)
+        session = URLSession(configuration: configuration, delegate: followsRedirects ? nil : NoHTTPRedirects(), delegateQueue: nil)
     }
 
     func send(_ request: URLRequest) async throws -> HTTPResponse {

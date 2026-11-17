@@ -2,3 +2,5 @@
 xcuserdata/
 DerivedData/
 build/
+
+server/target/

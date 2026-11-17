@@ -24,35 +24,43 @@ nonisolated struct MediaCatalogService: MediaCatalogServing, PersonCatalogServin
     let keychain: any KeychainStoring
     let tmdb: TMDBClient
     let omdb: OMDbClient
+    var trial: TrialCatalogAccess? = nil
 
-    init(keychain: any KeychainStoring, tmdb: TMDBClient = TMDBClient(), omdb: OMDbClient = OMDbClient()) {
+    init(keychain: any KeychainStoring, tmdb: TMDBClient = TMDBClient(), omdb: OMDbClient = OMDbClient(), trial: TrialCatalogAccess? = nil) {
         self.keychain = keychain
         self.tmdb = tmdb
         self.omdb = omdb
+        self.trial = trial
     }
 
     func search(title: String) async throws -> [MediaSearchResult] {
-        try await tmdb.search(title: title, key: requiredTMDBKey())
+        let (client, credential) = try await catalogAccess()
+        return try await client.search(title: title, key: credential)
     }
 
     func details(for candidate: MediaSearchResult) async throws -> MediaDetails {
-        try await tmdb.details(for: candidate, key: requiredTMDBKey())
+        let (client, credential) = try await catalogAccess()
+        return try await client.details(for: candidate, key: credential)
     }
 
     func movieSeries(tmdbID: Int) async throws -> MovieSeriesLookup {
-        try await tmdb.movieSeries(tmdbID: tmdbID, key: requiredTMDBKey())
+        let (client, credential) = try await catalogAccess()
+        return try await client.movieSeries(tmdbID: tmdbID, key: credential)
     }
 
     func movieDirectors(tmdbID: Int) async throws -> [MovieDirector] {
-        try await tmdb.movieDirectors(tmdbID: tmdbID, key: requiredTMDBKey())
+        let (client, credential) = try await catalogAccess()
+        return try await client.movieDirectors(tmdbID: tmdbID, key: credential)
     }
 
     func searchPeople(name: String) async throws -> [PersonSearchResult] {
-        try await tmdb.searchPeople(name: name, key: requiredTMDBKey())
+        let (client, credential) = try await catalogAccess()
+        return try await client.searchPeople(name: name, key: credential)
     }
 
     func directedWorks(personID: Int) async throws -> [CreditedWork] {
-        try await tmdb.directedWorks(personID: personID, key: requiredTMDBKey())
+        let (client, credential) = try await catalogAccess()
+        return try await client.directedWorks(personID: personID, key: credential)
     }
 
     func supplementalRatings(imdbID: String?) async throws -> SupplementalRatingsResult {
@@ -67,8 +75,9 @@ nonisolated struct MediaCatalogService: MediaCatalogServing, PersonCatalogServin
         }
     }
 
-    private func requiredTMDBKey() async throws -> String {
+    private func catalogAccess() async throws -> (TMDBClient, String) {
+        if let selected = try await trial?.selectedCatalog() { return selected }
         guard let key = try await keychain.read(.tmdb).nonEmpty else { throw APIError.missingKey(.tmdb) }
-        return key
+        return (tmdb, key)
     }
 }

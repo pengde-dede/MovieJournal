@@ -3,12 +3,17 @@ import Foundation
 nonisolated struct TMDBClient: Sendable {
     let transport: any HTTPTransport
 
-    init(transport: any HTTPTransport = HTTPClient()) { self.transport = transport }
+    private let trialServer: URL?
+
+    init(transport: any HTTPTransport = HTTPClient(), trialServer: URL? = nil) {
+        self.transport = transport
+        self.trialServer = trialServer
+    }
 
     func authenticate(key: String) async throws {
         let request = try request(path: "/3/authentication", key: key)
         let response = try await transport.send(request)
-        try APIRequest.check(response, provider: .tmdb)
+        try check(response)
         let result = try APIRequest.decode(TMDBAuthenticationResponse.self, from: response.data)
         guard result.success else { throw APIError.invalidKey(.tmdb) }
     }
@@ -21,7 +26,7 @@ nonisolated struct TMDBClient: Sendable {
             URLQueryItem(name: "include_adult", value: "false")
         ])
         let response = try await transport.send(request)
-        try APIRequest.check(response, provider: .tmdb)
+        try check(response)
         let decoded = try APIRequest.decode(TMDBSearchResponse.self, from: response.data)
         return decoded.results.compactMap { item in
             guard item.id > 0, let type = MediaType(rawValue: item.mediaType ?? "") else { return nil }
@@ -44,7 +49,7 @@ nonisolated struct TMDBClient: Sendable {
             URLQueryItem(name: "include_adult", value: "false")
         ])
         let response = try await transport.send(request)
-        try APIRequest.check(response, provider: .tmdb)
+        try check(response)
         let decoded = try APIRequest.decode(TMDBPersonSearchResponse.self, from: response.data)
         let people = decoded.results.compactMap { person -> PersonSearchResult? in
             guard person.id > 0, let name = person.name.nonEmpty else { return nil }
@@ -61,7 +66,7 @@ nonisolated struct TMDBClient: Sendable {
             URLQueryItem(name: "language", value: "zh-CN")
         ])
         let response = try await transport.send(request)
-        try APIRequest.check(response, provider: .tmdb)
+        try check(response)
         let decoded = try APIRequest.decode(TMDBCombinedCreditsResponse.self, from: response.data)
         var seen = Set<String>()
         let works = (decoded.crew ?? []).compactMap { credit -> (work: CreditedWork, date: String?)? in
@@ -100,7 +105,7 @@ nonisolated struct TMDBClient: Sendable {
             URLQueryItem(name: "language", value: "zh-CN")
         ])
         let response = try await transport.send(request)
-        try APIRequest.check(response, provider: .tmdb)
+        try check(response)
         let body = try APIRequest.decode(TMDBDetailsResponse.self, from: response.data)
         guard body.id == tmdbID else { throw APIError.invalidResponse }
         return try body.movieSeriesLookup()
@@ -111,7 +116,7 @@ nonisolated struct TMDBClient: Sendable {
             URLQueryItem(name: "language", value: "zh-CN")
         ])
         let response = try await transport.send(request)
-        try APIRequest.check(response, provider: .tmdb)
+        try check(response)
         let credits = try APIRequest.decode(TMDBDetailsResponse.Credits.self, from: response.data)
         guard credits.id == tmdbID, let directors = credits.movieDirectors else { throw APIError.invalidResponse }
         return directors
@@ -125,7 +130,7 @@ nonisolated struct TMDBClient: Sendable {
             URLQueryItem(name: "append_to_response", value: append)
         ])
         let response = try await transport.send(request)
-        try APIRequest.check(response, provider: .tmdb)
+        try check(response)
         let body = try APIRequest.decode(TMDBDetailsResponse.self, from: response.data)
         guard body.id == candidate.tmdbID else { throw APIError.invalidResponse }
         var overview = body.overview.nonEmpty ?? ""
@@ -135,7 +140,7 @@ nonisolated struct TMDBClient: Sendable {
             do {
                 let englishRequest = try self.request(path: path, key: key, query: [URLQueryItem(name: "language", value: "en-US")])
                 let englishResponse = try await transport.send(englishRequest)
-                try APIRequest.check(englishResponse, provider: .tmdb)
+                try check(englishResponse)
                 let english = try APIRequest.decode(TMDBDetailsResponse.self, from: englishResponse.data)
                 overview = english.overview.nonEmpty ?? ""
                 if !overview.isEmpty { overviewLanguage = "en" }
@@ -172,7 +177,25 @@ nonisolated struct TMDBClient: Sendable {
     }
 
     private func request(path: String, key: String, query: [URLQueryItem] = []) throws -> URLRequest {
-        try APIRequest.get(host: "api.themoviedb.org", path: path, query: [URLQueryItem(name: "api_key", value: key)] + query)
+        guard let trialServer else {
+            return try APIRequest.get(host: "api.themoviedb.org", path: path, query: [URLQueryItem(name: "api_key", value: key)] + query)
+        }
+        guard var url = URLComponents(url: trialServer, resolvingAgainstBaseURL: false) else { throw APIError.invalidResponse }
+        url.path = "/api/catalog" + path
+        url.queryItems = query.isEmpty ? nil : query
+        url.percentEncodedQuery = url.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+        guard let endpoint = url.url else { throw APIError.invalidResponse }
+        var request = URLRequest(url: endpoint)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        return request
+    }
+
+    private func check(_ response: HTTPResponse) throws {
+        if trialServer != nil, response.statusCode == 401 || response.statusCode == 403 {
+            throw TrialCatalogError.expiredSession
+        }
+        try APIRequest.check(response, provider: trialServer == nil ? .tmdb : .trial)
     }
 
     private static func year(_ date: String?) -> Int? {
