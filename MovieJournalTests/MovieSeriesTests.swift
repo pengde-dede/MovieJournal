@@ -66,26 +66,32 @@ struct MovieSeriesTests {
         #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("Backups/BeforeV5.store").path))
     }
 
-    @Test("系列按 ID 折叠，保留单部作品并支持搜索和状态筛选")
+    @Test("系列按 ID 折叠，合集在上、单部在下，并支持搜索和状态筛选")
     func groupsByIDAndKeepsFilters() throws {
         let second = ViewingRecord(tmdbID: 2, mediaType: .movie, title: "续篇", releaseYear: 2002,
                                    seriesLookup: series(posterPath: nil), watchStatus: .wantToWatch)
         let first = ViewingRecord(tmdbID: 1, mediaType: .movie, title: "初篇", releaseYear: 1999, seriesLookup: series())
         let sameName = ViewingRecord(tmdbID: 3, mediaType: .movie, title: "另一系列", seriesLookup: series(id: 18))
         let tv = ViewingRecord(tmdbID: 1, mediaType: .tv, title: "剧集")
-        let library = [second, sameName, first, tv]
+        let standalone = ViewingRecord(tmdbID: 4, mediaType: .movie, title: "独立电影",
+                                       seriesLookup: MovieSeriesLookup(series: nil))
+        let library = [standalone, second, sameName, first, tv]
         let model = LibraryViewModel()
         let grouping = LibraryGrouping(records: library, mode: .series)
-        let result = grouping.tiles(matching: library)
-        #expect(result.map(\.id) == [.series(17), .record(sameName.id), .record(tv.id)])
-        guard case .group(let group) = try #require(result.first) else { Issue.record("未生成合集"); return }
+        let sections = grouping.sections(matching: library)
+        #expect(sections.map(\.id) == [.seriesGroups, .ungroupedSeries])
+        #expect(sections.first?.tiles.map(\.id) == [.series(17)])
+        #expect(sections.last?.tiles.map(\.id) == [.record(standalone.id), .record(sameName.id), .record(tv.id)])
+        #expect(grouping.sections(matching: [sameName]).map(\.id) == [.ungroupedSeries])
+        guard case .group(let group) = try #require(sections.first?.tiles.first) else { Issue.record("未生成合集"); return }
         #expect(group.artworkPath == "/galaxy.jpg")
         #expect(group.chronologicalRecords.map(\.id) == [first.id, second.id])
         model.searchText = "银河合集"
         model.statusFilter = .wantToWatch
         let matching = model.matchingRecords(in: library, displayMode: .series)
-        let filtered = grouping.tiles(matching: matching)
-        guard case .group(let filteredGroup) = try #require(filtered.first) else { Issue.record("未保留合集"); return }
+        let filtered = grouping.sections(matching: matching)
+        #expect(filtered.map(\.id) == [.seriesGroups])
+        guard case .group(let filteredGroup) = try #require(filtered.first?.tiles.first) else { Issue.record("未保留合集"); return }
         #expect(filteredGroup.libraryCount == 2 && filteredGroup.records.map(\.id) == [second.id])
     }
 

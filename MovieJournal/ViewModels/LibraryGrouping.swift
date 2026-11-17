@@ -48,7 +48,9 @@ struct LibraryGridSection: Identifiable {
     enum Kind: String {
         case plain
         case directorGroups = "导演合集"
-        case ungrouped = "未归入导演合集"
+        case ungroupedDirectors = "未归入导演合集"
+        case seriesGroups = "系列合集"
+        case ungroupedSeries = "未归入系列合集"
     }
 
     let id: Kind
@@ -95,7 +97,9 @@ struct LibraryGrouping {
     func sections(matching: [ViewingRecord]) -> [LibraryGridSection] {
         let tiles = tiles(matching: matching)
         guard !tiles.isEmpty else { return [] }
-        guard mode == .directors else { return [LibraryGridSection(id: .plain, tiles: tiles)] }
+        guard mode != .works else { return [LibraryGridSection(id: .plain, tiles: tiles)] }
+        let kinds: (groups: LibraryGridSection.Kind, singles: LibraryGridSection.Kind) = mode == .series
+            ? (.seriesGroups, .ungroupedSeries) : (.directorGroups, .ungroupedDirectors)
 
         var groups: [LibraryTile] = []
         var singleWorks: [LibraryTile] = []
@@ -105,8 +109,8 @@ struct LibraryGrouping {
             case .record: singleWorks.append(tile)
             }
         }
-        return [LibraryGridSection(id: .directorGroups, tiles: groups),
-                LibraryGridSection(id: .ungrouped, tiles: singleWorks)].filter { !$0.tiles.isEmpty }
+        return [LibraryGridSection(id: kinds.groups, tiles: groups),
+                LibraryGridSection(id: kinds.singles, tiles: singleWorks)].filter { !$0.tiles.isEmpty }
     }
 
     func tiles(matching: [ViewingRecord]) -> [LibraryTile] {

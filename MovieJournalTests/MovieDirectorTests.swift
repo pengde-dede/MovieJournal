@@ -80,7 +80,7 @@ struct MovieDirectorTests {
         let directors = LibraryGrouping(records: records, mode: .directors)
 
         let sections = directors.sections(matching: records)
-        #expect(sections.map(\.id) == [.directorGroups, .ungrouped])
+        #expect(sections.map(\.id) == [.directorGroups, .ungroupedDirectors])
         #expect(sections.first?.tiles.map(\.id) == [.director(1)])
         #expect(sections.last?.tiles.map(\.id) == [.record(missing.id), .record(single.id), .record(noCredit.id)])
 
@@ -88,7 +88,7 @@ struct MovieDirectorTests {
         let filtered = directors.sections(matching: [second])
         #expect(filtered.map(\.id) == [.directorGroups])
         #expect(filtered.first?.tiles.map(\.id) == [.director(1)])
-        #expect(directors.sections(matching: [single]).map(\.id) == [.ungrouped])
+        #expect(directors.sections(matching: [single]).map(\.id) == [.ungroupedDirectors])
         #expect(directors.sections(matching: []).isEmpty)
 
         let works = LibraryGrouping(records: records, mode: .works).sections(matching: records)
