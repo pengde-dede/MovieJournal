@@ -54,13 +54,20 @@ final class RecordStore {
         return try context.fetch(descriptor).first
     }
 
-    func saveSeriesLookup(_ lookup: MovieSeriesLookup, recordID: UUID, tmdbID: Int) throws -> Bool {
+    func saveMovieMetadata(_ lookup: MovieMetadataLookup, recordID: UUID, tmdbID: Int) throws -> Bool {
         // 可能在联网等待期间删除、重新加入或补好了此作品。
         guard let record = try existingRecord(tmdbID: tmdbID, mediaType: .movie),
-              record.id == recordID, record.needsSeriesLookup else { return false }
-        record.seriesLookup = lookup
-        do { try saveChanges() }
-        catch { context.rollback(); throw error }
+              record.id == recordID, record.needsLookup(lookup.kind) else { return false }
+        do {
+            switch lookup {
+            case .series(let series): record.seriesLookup = series
+            case .directors(let directors): try record.setMovieDirectors(directors)
+            }
+            try saveChanges()
+        } catch {
+            context.rollback()
+            throw error
+        }
         return true
     }
 

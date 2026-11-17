@@ -16,7 +16,11 @@ nonisolated protocol MovieSeriesCatalogServing: Sendable {
     func movieSeries(tmdbID: Int) async throws -> MovieSeriesLookup
 }
 
-nonisolated struct MediaCatalogService: MediaCatalogServing, PersonCatalogServing, MovieSeriesCatalogServing {
+nonisolated protocol MovieDirectorCatalogServing: Sendable {
+    func movieDirectors(tmdbID: Int) async throws -> [MovieDirector]
+}
+
+nonisolated struct MediaCatalogService: MediaCatalogServing, PersonCatalogServing, MovieSeriesCatalogServing, MovieDirectorCatalogServing {
     let keychain: any KeychainStoring
     let tmdb: TMDBClient
     let omdb: OMDbClient
@@ -37,6 +41,10 @@ nonisolated struct MediaCatalogService: MediaCatalogServing, PersonCatalogServin
 
     func movieSeries(tmdbID: Int) async throws -> MovieSeriesLookup {
         try await tmdb.movieSeries(tmdbID: tmdbID, key: requiredTMDBKey())
+    }
+
+    func movieDirectors(tmdbID: Int) async throws -> [MovieDirector] {
+        try await tmdb.movieDirectors(tmdbID: tmdbID, key: requiredTMDBKey())
     }
 
     func searchPeople(name: String) async throws -> [PersonSearchResult] {

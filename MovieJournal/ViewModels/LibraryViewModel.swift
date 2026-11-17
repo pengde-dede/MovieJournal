@@ -22,12 +22,11 @@ final class LibraryViewModel {
     private var didPrepareLibrary = false
     private var cacheRevision = 0
 
-    func matchingRecords(in records: [ViewingRecord], sort: LibrarySort = .added, includeSeriesNames: Bool = false) -> [ViewingRecord] {
+    func matchingRecords(in records: [ViewingRecord], sort: LibrarySort = .added, displayMode: LibraryDisplayMode = .works) -> [ViewingRecord] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let matches = records.filter {
             mediaFilter.includes($0.mediaType) && statusFilter.includes($0.watchStatus) &&
-                (query.isEmpty || Self.record($0, matches: query) ||
-                    (includeSeriesNames && $0.seriesName?.localizedStandardContains(query) == true))
+                (query.isEmpty || Self.record($0, matches: query, displayMode: displayMode))
         }
         switch sort {
         case .added: return matches
@@ -45,9 +44,17 @@ final class LibraryViewModel {
     }
 
     // 片名之外也匹配导演（剧集为主创）和保存的主演；人名沿用 TMDB 返回的写法。
-    private static func record(_ record: ViewingRecord, matches query: String) -> Bool {
-        ([record.title, record.originalTitle] + record.creatorNames + record.castNames)
-            .contains { $0.localizedStandardContains(query) }
+    private static func record(_ record: ViewingRecord, matches query: String, displayMode: LibraryDisplayMode) -> Bool {
+        if ([record.title, record.originalTitle] + record.creatorNames + record.castNames)
+            .contains(where: { $0.localizedStandardContains(query) }) { return true }
+        switch displayMode {
+        case .works: return false
+        case .series: return record.seriesName?.localizedStandardContains(query) == true
+        case .directors:
+            return record.movieDirectors?.contains {
+                $0.name.localizedStandardContains(query) || $0.originalName?.localizedStandardContains(query) == true
+            } == true
+        }
     }
 
     func resetFilters() {

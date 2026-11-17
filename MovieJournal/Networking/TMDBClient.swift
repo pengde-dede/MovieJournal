@@ -106,6 +106,17 @@ nonisolated struct TMDBClient: Sendable {
         return try body.movieSeriesLookup()
     }
 
+    func movieDirectors(tmdbID: Int, key: String) async throws -> [MovieDirector] {
+        let request = try request(path: "/3/movie/\(tmdbID)/credits", key: key, query: [
+            URLQueryItem(name: "language", value: "zh-CN")
+        ])
+        let response = try await transport.send(request)
+        try APIRequest.check(response, provider: .tmdb)
+        let credits = try APIRequest.decode(TMDBDetailsResponse.Credits.self, from: response.data)
+        guard credits.id == tmdbID, let directors = credits.movieDirectors else { throw APIError.invalidResponse }
+        return directors
+    }
+
     func details(for candidate: MediaSearchResult, key: String) async throws -> MediaDetails {
         let path = "/3/\(candidate.mediaType.rawValue)/\(candidate.tmdbID)"
         let append = candidate.mediaType == .movie ? "credits,external_ids" : "aggregate_credits,external_ids"
@@ -155,7 +166,8 @@ nonisolated struct TMDBClient: Sendable {
             imdbID: body.imdbID.nonEmpty ?? body.externalIDs?.imdbID.nonEmpty,
             tmdbRating: average, imdbRating: nil, rottenTomatoesRating: nil,
             posterPath: body.posterPath ?? candidate.posterPath, fetchedAt: .now, informationNote: note,
-            seriesLookup: isMovie ? (try? body.movieSeriesLookup()) : nil
+            seriesLookup: isMovie ? (try? body.movieSeriesLookup()) : nil,
+            movieDirectors: isMovie ? body.credits?.movieDirectors : nil
         )
     }
 

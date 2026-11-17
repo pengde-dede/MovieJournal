@@ -45,6 +45,7 @@ nonisolated struct LibraryBackup: Codable {
         var key: String { details.mediaType.mediaKey(tmdbID: details.tmdbID) }
         var artworkFilenames: [String] {
             [filename, PosterCache.filename(for: details.seriesLookup?.series?.posterPath)].compactMap { $0 }
+                + (details.movieDirectors ?? []).compactMap(\.profileFilename)
         }
         var libraryEntry: LibraryEntry {
             LibraryEntry(id: id, mediaKey: key, status: status ?? .watched, createdAt: created,
@@ -60,7 +61,7 @@ nonisolated struct LibraryBackup: Codable {
                 overview: d.overview, overviewLanguage: d.overviewLanguage, creatorNames: d.creatorNames,
                 castNames: d.castNames, imdbID: d.imdbID, tmdbRating: d.tmdbRating, imdbRating: d.imdbRating,
                 rottenTomatoesRating: d.rottenTomatoesRating, posterPath: d.posterPath, posterFilename: filename,
-                seriesLookup: d.seriesLookup,
+                seriesLookup: d.seriesLookup, movieDirectors: d.movieDirectors,
                 watchStatus: entry.status, latestViewingID: entry.latestViewingID, watchedOn: latest.date,
                 myRating: latest.rating, shortReview: latest.review, watchedSeason: latest.season,
                 createdAt: entry.createdAt, metadataFetchedAt: d.fetchedAt)
@@ -123,6 +124,11 @@ nonisolated struct LibraryBackup: Codable {
                 if let series = lookup.series, series.id <= 0 || Optional(series.name).nonEmpty == nil {
                     throw Invalid.archive
                 }
+            }
+            if let directors = entry.details.movieDirectors {
+                guard entry.details.mediaType == .movie,
+                      Set(directors.map(\.id)).count == directors.count,
+                      directors.allSatisfy({ $0.id > 0 && Optional($0.name).nonEmpty != nil }) else { throw Invalid.archive }
             }
             guard keys.insert(entry.key).inserted else { continue }
             guard ids.insert(entry.id).inserted else { throw Invalid.archive }

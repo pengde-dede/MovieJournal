@@ -73,3 +73,13 @@ extension MovieJournalSchemaV4.ViewingRecord {
         }
     }
 }
+
+extension MovieJournalSchemaV5.ViewingRecord {
+    func assignLatestViewingIDIfNeeded(hasHistory: Bool = false) {
+        guard latestViewingID == nil else { return }
+        if hasHistory || watchStatus == .watched || watchedOn != nil || myRating != nil
+            || !shortReview.isEmpty || watchedSeason != nil {
+            latestViewingID = UUID()
+        }
+    }
+}

@@ -5,7 +5,7 @@ struct LibraryView: View {
     let catalog: any MediaCatalogServing
     let posters: any PosterFileManaging
     let cleanup: PosterCleanupCoordinator
-    let seriesBackfill: MovieSeriesBackfill
+    let metadataBackfill: MovieMetadataBackfill
     @Environment(\.modelContext) private var context
     @Query(sort: \ViewingRecord.createdAt, order: .reverse) private var records: [ViewingRecord]
     @State private var model = LibraryViewModel()
@@ -27,14 +27,14 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        let matching = model.matchingRecords(in: records, sort: sort, includeSeriesNames: displayMode == .series)
+        let matching = model.matchingRecords(in: records, sort: sort, displayMode: displayMode)
         return NavigationStack(path: $path) {
             libraryContent(matching)
                 .safeAreaInset(edge: .top, spacing: 0) {
                     VStack(spacing: 0) {
                         searchControls
                         filterAndDisplayControls
-                        seriesStatus
+                        metadataStatus
                         posterStatus
                     }
                 }
@@ -43,7 +43,8 @@ struct LibraryView: View {
             .navigationDestination(for: LibraryDestination.self) { destination in
                 switch destination {
                 case .record(let id): RecordDetailDestinationView(recordID: id, cleanup: cleanup, catalog: catalog)
-                case .series(let id): seriesDestination(id: id)
+                case .series: groupDestination(destination, mode: .series)
+                case .director: groupDestination(destination, mode: .directors)
                 }
             }
             .toolbar {
@@ -149,29 +150,43 @@ struct LibraryView: View {
     }
 
     @ViewBuilder
-    private var seriesStatus: some View {
-        if displayMode == .series, let seriesCatalog = catalog as? any MovieSeriesCatalogServing {
-            let pending = records.filter(\.needsSeriesLookup).count
-            if seriesBackfill.isRunning || pending > 0 || seriesBackfill.message != nil {
-                HStack(spacing: 12) {
-                    if seriesBackfill.isRunning {
-                        ProgressView().controlSize(.small)
-                        Text("正在补全系列资料（\(seriesBackfill.completed)/\(seriesBackfill.total)）…")
-                        Spacer(minLength: 8)
-                        Button("停止") { seriesBackfill.cancel() }
-                    } else {
-                        Text(seriesBackfill.message ?? "\(pending) 部电影可以补全系列资料。")
-                        Spacer(minLength: 8)
-                        if pending > 0 {
-                            Button("补全合集资料") {
-                                seriesBackfill.start(store: RecordStore(context: context), catalog: seriesCatalog)
-                            }
-                        }
-                    }
+    private var metadataStatus: some View {
+        switch displayMode {
+        case .works: EmptyView()
+        case .series:
+            if let seriesCatalog = catalog as? any MovieSeriesCatalogServing {
+                metadataStatus(.series, buttonTitle: "补全合集资料") {
+                    metadataBackfill.startSeries(store: RecordStore(context: context), catalog: seriesCatalog)
                 }
-                .font(.callout).foregroundStyle(.secondary)
-                .padding(.horizontal, 28).padding(.bottom, 10)
             }
+        case .directors:
+            if let directorCatalog = catalog as? any MovieDirectorCatalogServing {
+                metadataStatus(.directors, buttonTitle: "补全导演资料") {
+                    metadataBackfill.startDirectors(store: RecordStore(context: context), catalog: directorCatalog)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func metadataStatus(_ kind: MovieMetadataKind, buttonTitle: String, start: @escaping () -> Void) -> some View {
+        let pending = records.lazy.filter { $0.needsLookup(kind) }.count
+        let message = metadataBackfill.messages[kind]
+        if metadataBackfill.isRunning || pending > 0 || message != nil {
+            HStack(spacing: 12) {
+                if let active = metadataBackfill.runningKind {
+                    ProgressView().controlSize(.small)
+                    Text("正在补全\(active.rawValue)资料（\(metadataBackfill.completed)/\(metadataBackfill.total)）…")
+                    Spacer(minLength: 8)
+                    Button("停止") { metadataBackfill.cancel() }
+                } else {
+                    Text(message ?? "\(pending) 部电影可以补全\(kind.rawValue)资料。")
+                    Spacer(minLength: 8)
+                    if pending > 0 { Button(buttonTitle, action: start) }
+                }
+            }
+            .font(.callout).foregroundStyle(.secondary)
+            .padding(.horizontal, 28).padding(.bottom, 10)
         }
     }
 
@@ -252,18 +267,17 @@ struct LibraryView: View {
                 Button("清除搜索和筛选") { model.resetFilters() }
             }
         } else {
-            let tiles = displayMode == .series ? model.seriesTiles(matching: matching, in: records) : matching.map(LibraryTile.record)
-            tileGrid(tiles)
+            tileGrid(LibraryGrouping(records: records, mode: displayMode).tiles(matching: matching))
         }
     }
 
     @ViewBuilder
-    private func seriesDestination(id: Int) -> some View {
-        let members = records.filter { $0.seriesID == id }
-        let visible = model.matchingRecords(in: members, includeSeriesNames: true)
-        if let group = MovieSeriesGroup(members: members, visible: visible), !visible.isEmpty {
+    private func groupDestination(_ id: LibraryDestination, mode: LibraryDisplayMode) -> some View {
+        let grouping = LibraryGrouping(records: records, mode: mode)
+        let visible = model.matchingRecords(in: grouping.records(in: id), displayMode: mode)
+        if let group = grouping.group(id, matching: visible) {
             tileGrid(group.chronologicalRecords.map(LibraryTile.record))
-                .navigationTitle(group.series.name)
+                .navigationTitle(group.name)
         } else {
             ContentUnavailableView("没有符合条件的作品", systemImage: "film.stack")
         }
@@ -274,8 +288,8 @@ struct LibraryView: View {
             LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
                 ForEach(tiles) { tile in
                     switch tile {
-                    case .series(let group):
-                        NavigationLink(value: tile.id) { MovieSeriesCard(group: group) }
+                    case .group(let group):
+                        NavigationLink(value: tile.id) { LibraryGroupCard(group: group) }
                             .buttonStyle(.plain)
                     case .record(let record):
                         NavigationLink(value: tile.id) { RecordCard(record: record) }

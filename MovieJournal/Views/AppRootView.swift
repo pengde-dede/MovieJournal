@@ -6,14 +6,14 @@ struct AppRootView: View {
     let catalog: any MediaCatalogServing
     let posters: any PosterFileManaging
     let cleanup: PosterCleanupCoordinator
-    let seriesBackfill: MovieSeriesBackfill
+    let metadataBackfill: MovieMetadataBackfill
     @Environment(SettingsViewModel.self) private var settings
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
             if let container = persistence.container {
-                LibraryView(catalog: catalog, posters: posters, cleanup: cleanup, seriesBackfill: seriesBackfill)
+                LibraryView(catalog: catalog, posters: posters, cleanup: cleanup, metadataBackfill: metadataBackfill)
                     .modelContainer(container)
             } else if let errorDescription = persistence.errorDescription {
                 StorageErrorView(errorDescription: errorDescription) {

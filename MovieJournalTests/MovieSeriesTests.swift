@@ -75,16 +75,17 @@ struct MovieSeriesTests {
         let tv = ViewingRecord(tmdbID: 1, mediaType: .tv, title: "剧集")
         let library = [second, sameName, first, tv]
         let model = LibraryViewModel()
-        let result = model.seriesTiles(matching: library, in: library)
+        let grouping = LibraryGrouping(records: library, mode: .series)
+        let result = grouping.tiles(matching: library)
         #expect(result.map(\.id) == [.series(17), .record(sameName.id), .record(tv.id)])
-        guard case .series(let group) = try #require(result.first) else { Issue.record("未生成合集"); return }
-        #expect(group.series.posterPath == "/galaxy.jpg")
+        guard case .group(let group) = try #require(result.first) else { Issue.record("未生成合集"); return }
+        #expect(group.artworkPath == "/galaxy.jpg")
         #expect(group.chronologicalRecords.map(\.id) == [first.id, second.id])
         model.searchText = "银河合集"
         model.statusFilter = .wantToWatch
-        let matching = model.matchingRecords(in: library, includeSeriesNames: true)
-        let filtered = model.seriesTiles(matching: matching, in: library)
-        guard case .series(let filteredGroup) = try #require(filtered.first) else { Issue.record("未保留合集"); return }
+        let matching = model.matchingRecords(in: library, displayMode: .series)
+        let filtered = grouping.tiles(matching: matching)
+        guard case .group(let filteredGroup) = try #require(filtered.first) else { Issue.record("未保留合集"); return }
         #expect(filteredGroup.libraryCount == 2 && filteredGroup.records.map(\.id) == [second.id])
     }
 
@@ -105,18 +106,18 @@ struct MovieSeriesTests {
             .failure(.rateLimited(.tmdb)), .json(#"{"id":1,"belongs_to_collection":null}"#)
         ])
         let catalog = MediaCatalogService(keychain: MemoryKeychain([.tmdb: "fake-key"]), tmdb: TMDBClient(transport: transport))
-        let backfill = MovieSeriesBackfill()
-        let task = try #require(backfill.start(store: store, catalog: catalog))
-        #expect(backfill.start(store: store, catalog: catalog) == nil)
+        let backfill = MovieMetadataBackfill()
+        let task = try #require(backfill.startSeries(store: store, catalog: catalog))
+        #expect(backfill.startSeries(store: store, catalog: catalog) == nil)
         await task.value
         #expect(newer.seriesLookup == series() && older.needsSeriesLookup)
         #expect(backfill.completed == 1 && backfill.total == 2)
-        #expect(backfill.message?.contains("频繁") == true)
-        await backfill.start(store: store, catalog: catalog)?.value
+        #expect(backfill.messages[.series]?.contains("频繁") == true)
+        await backfill.startSeries(store: store, catalog: catalog)?.value
         #expect(older.seriesLookup == MovieSeriesLookup(series: nil) && !older.needsSeriesLookup)
         #expect(newer.latestViewingID == watchedID && newer.watchStatus == .watching && newer.myRating == 8 && newer.shortReview == "保留")
         #expect(await transport.requests.map { $0.url?.path } == ["/3/movie/2", "/3/movie/1", "/3/movie/1"])
-        #expect(backfill.start(store: store, catalog: catalog) == nil)
+        #expect(backfill.startSeries(store: store, catalog: catalog) == nil)
         let reopened = try PersistenceController.makeContainer(in: dir)
         #expect(try RecordStore(context: reopened.mainContext).recordsNewestFirst().allSatisfy { !$0.needsSeriesLookup })
     }

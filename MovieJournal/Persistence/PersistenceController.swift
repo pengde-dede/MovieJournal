@@ -43,7 +43,7 @@ final class PersistenceController {
         let storeURL = storageDirectory.appendingPathComponent("MovieJournal.store")
         try PreMigrationBackup.preserveV1(at: storeURL)
         try PreMigrationBackup.preserveBeforeModelChanges(at: storeURL)
-        let schema = Schema(versionedSchema: MovieJournalSchemaV5.self)
+        let schema = Schema(versionedSchema: MovieJournalSchemaV6.self)
         let configuration = ModelConfiguration(
             "MovieJournal",
             schema: schema,

@@ -45,6 +45,9 @@ enum PreMigrationBackup {
         if !columns.contains("ZSERIESCHECKED") {
             try preserve(at: store, filename: "BeforeV5.store")
         }
+        if !columns.contains("ZDIRECTORCREDITSDATA") {
+            try preserve(at: store, filename: "BeforeV6.store")
+        }
     }
 
     private static func preserve(at store: URL, filename: String) throws {

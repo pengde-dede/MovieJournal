@@ -65,10 +65,30 @@ nonisolated struct TMDBDetailsResponse: Decodable, Sendable {
         let name: String?
         let order: Int?
         let job: String?
+        let originalName: String?
+        let profilePath: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id, name, order, job
+            case originalName = "original_name", profilePath = "profile_path"
+        }
     }
     struct Credits: Decodable, Sendable {
+        let id: Int?
         let cast: [Person]?
         let crew: [Person]?
+
+        var movieDirectors: [MovieDirector]? {
+            guard let crew else { return nil }
+            var seen = Set<Int>()
+            return crew.compactMap { person in
+                guard person.job == "Director", let id = person.id, id > 0,
+                      let name = person.name.nonEmpty ?? person.originalName.nonEmpty,
+                      seen.insert(id).inserted else { return nil }
+                return MovieDirector(id: id, name: name, originalName: person.originalName.nonEmpty,
+                                     profilePath: person.profilePath.nonEmpty)
+            }
+        }
     }
     struct ExternalIDs: Decodable, Sendable {
         let imdbID: String?

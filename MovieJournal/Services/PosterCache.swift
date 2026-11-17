@@ -19,6 +19,7 @@ nonisolated protocol PosterCaching: Sendable {
 }
 
 nonisolated protocol PosterFileManaging: PosterCaching {
+    func loadProfile(path: String) async throws -> CachedPoster
     func restorePoster(_ data: Data, filename: String) async throws
     func existingFilename(path: String?, filename: String?) async -> String?
     func readData(filename: String) async throws -> Data
@@ -62,9 +63,18 @@ actor PosterCache: PosterFileManaging {
     func load(path: String?, filename: String?) async throws -> CachedPoster {
         try Task.checkCancellation()
         if let filename, let cached = readLocal(filename) { return cached }
-        guard let url = TMDBImageURL.poster(path), let name = Self.filename(for: path) else {
-            throw PosterCacheError.noPoster
-        }
+        guard let url = TMDBImageURL.poster(path) else { throw PosterCacheError.noPoster }
+        return try await loadImage(url)
+    }
+
+    func loadProfile(path: String) async throws -> CachedPoster {
+        try Task.checkCancellation()
+        guard let url = TMDBImageURL.profile(path) else { throw PosterCacheError.noPoster }
+        return try await loadImage(url)
+    }
+
+    private func loadImage(_ url: URL) async throws -> CachedPoster {
+        let name = Self.filename(for: url)
         if let cached = readLocal(name) { return cached }
         if let task = inFlight[name] { return try await task.value }
         // 共用下载不随某一张卡片消失而取消，其他视图仍可取得同一份文件。
@@ -128,7 +138,14 @@ actor PosterCache: PosterFileManaging {
     }
 
     nonisolated static func filename(for path: String?) -> String? {
-        guard let url = TMDBImageURL.poster(path) else { return nil }
+        TMDBImageURL.poster(path).map { filename(for: $0) }
+    }
+
+    nonisolated static func profileFilename(for path: String?) -> String? {
+        TMDBImageURL.profile(path).map { filename(for: $0) }
+    }
+
+    nonisolated private static func filename(for url: URL) -> String {
         let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
         return digest.map { String(format: "%02x", $0) }.joined() + ".image"
     }
@@ -180,5 +197,7 @@ extension PosterCache {
 }
 
 extension PosterFileManaging {
+    func loadProfile(path: String) async throws -> CachedPoster { try await load(path: path, filename: nil) }
+
     func restorePoster(_ data: Data, filename: String) async throws { throw PosterCacheError.storageUnavailable }
 }

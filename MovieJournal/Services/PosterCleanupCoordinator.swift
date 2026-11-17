@@ -61,8 +61,8 @@ final class PosterCleanupCoordinator {
                     let records = try store.recordsNewestFirst()
                     // 补存下载返回与引用回写之间也要保留文件；文件名可直接由海报路径推导，无需读图。
                     let references = Set(records.flatMap { record in
-                        [record.posterFilename, PosterCache.filename(for: record.posterPath),
-                         PosterCache.filename(for: record.seriesPosterPath)].compactMap { $0 }
+                        [record.posterFilename, PosterCache.filename(for: record.posterPath)].compactMap { $0 }
+                        + record.groupArtworkFilenames
                     })
                     if isStartup {
                         _ = try await cache.cleanupAtStartup(referencedFilenames: references)

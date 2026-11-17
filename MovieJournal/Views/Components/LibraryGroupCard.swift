@@ -1,24 +1,27 @@
 import AppKit
 import SwiftUI
 
-struct MovieSeriesCard: View {
-    let group: MovieSeriesGroup
+struct LibraryGroupCard: View {
+    let group: LibraryGroup
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            MovieSeriesCover(series: group.series, sources: group.posterSources)
+            LibraryGroupCover(path: group.artworkPath, usesProfile: group.usesProfile,
+                              symbolName: group.symbolName, sources: group.posterSources)
                 .accessibilityHidden(true)
-            Text(group.series.name).font(.headline).lineLimit(2)
+            Text(group.name).font(.headline).lineLimit(2)
             Label(group.records.count == group.libraryCount ? "\(group.libraryCount) 部电影"
-                  : "\(group.records.count) / \(group.libraryCount) 部电影", systemImage: "film.stack")
+                  : "\(group.records.count) / \(group.libraryCount) 部电影", systemImage: group.symbolName)
                 .font(.caption.weight(.medium)).foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
     }
 }
 
-private struct MovieSeriesCover: View {
-    let series: MovieSeries
+private struct LibraryGroupCover: View {
+    let path: String?
+    let usesProfile: Bool
+    let symbolName: String
     let sources: [ViewingRecord]
     @Environment(\.posterCache) private var cache
     @State private var artwork: NSImage?
@@ -29,7 +32,7 @@ private struct MovieSeriesCover: View {
             .fill(.quaternary)
             .aspectRatio(2.0 / 3.0, contentMode: .fit)
             .overlay {
-                if artworkPath == series.posterPath, let artwork {
+                if artworkPath == path, let artwork {
                     Image(nsImage: artwork).resizable().scaledToFill()
                 } else {
                     collage
@@ -37,17 +40,22 @@ private struct MovieSeriesCover: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(alignment: .bottomTrailing) {
-                Image(systemName: "film.stack")
+                Image(systemName: symbolName)
                     .font(.footnote.weight(.semibold))
                     .padding(7)
                     .foregroundStyle(.white)
                     .background(.black.opacity(0.68), in: RoundedRectangle(cornerRadius: 7))
                     .padding(8)
             }
-            .task(id: series.posterPath) {
-                guard let path = series.posterPath else { return }
+            .task(id: path) {
+                guard let path else { return }
                 do {
-                    let poster = try await cache.load(path: path, filename: nil)
+                    let poster: CachedPoster
+                    if usesProfile {
+                        poster = try await cache.loadProfile(path: path)
+                    } else {
+                        poster = try await cache.load(path: path, filename: nil)
+                    }
                     try Task.checkCancellation()
                     if let image = NSImage(data: poster.data) {
                         artwork = image
@@ -62,7 +70,7 @@ private struct MovieSeriesCover: View {
     @ViewBuilder
     private var collage: some View {
         if sources.isEmpty {
-            Image(systemName: "film.stack").font(.largeTitle).foregroundStyle(.secondary)
+            Image(systemName: symbolName).font(.largeTitle).foregroundStyle(.secondary)
         } else if sources.count == 1, let source = sources.first {
             PosterView(path: source.posterPath, filename: source.posterFilename)
         } else {
