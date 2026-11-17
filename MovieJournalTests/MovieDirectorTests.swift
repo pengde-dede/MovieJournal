@@ -69,6 +69,33 @@ struct MovieDirectorTests {
         #expect(filteredGroup.libraryCount == 2 && filteredGroup.records.map(\.id) == [joint.id])
     }
 
+    @Test("导演合集优先分区，缺导演资料和单片导演保留在下方")
+    func directorSectionsPreserveMembershipAndOrder() {
+        let missing = ViewingRecord(tmdbID: 10, mediaType: .movie, title: "待补资料")
+        let first = ViewingRecord(tmdbID: 11, mediaType: .movie, title: "甲作品", movieDirectors: [director(1)])
+        let single = ViewingRecord(tmdbID: 12, mediaType: .movie, title: "单部作品", movieDirectors: [director(2)])
+        let noCredit = ViewingRecord(tmdbID: 13, mediaType: .movie, title: "没有导演资料", movieDirectors: [])
+        let second = ViewingRecord(tmdbID: 14, mediaType: .movie, title: "乙作品", movieDirectors: [director(1)])
+        let records = [missing, first, single, noCredit, second]
+        let directors = LibraryGrouping(records: records, mode: .directors)
+
+        let sections = directors.sections(matching: records)
+        #expect(sections.map(\.id) == [.directorGroups, .ungrouped])
+        #expect(sections.first?.tiles.map(\.id) == [.director(1)])
+        #expect(sections.last?.tiles.map(\.id) == [.record(missing.id), .record(single.id), .record(noCredit.id)])
+
+        // 筛选结果只剩某位导演的一部电影时，仍按整份片库的成员数归组。
+        let filtered = directors.sections(matching: [second])
+        #expect(filtered.map(\.id) == [.directorGroups])
+        #expect(filtered.first?.tiles.map(\.id) == [.director(1)])
+        #expect(directors.sections(matching: [single]).map(\.id) == [.ungrouped])
+        #expect(directors.sections(matching: []).isEmpty)
+
+        let works = LibraryGrouping(records: records, mode: .works).sections(matching: records)
+        #expect(works.map(\.id) == [.plain])
+        #expect(works.first?.tiles.map(\.id) == records.map { .record($0.id) })
+    }
+
     @Test("V5 升级保留系列和观影资料，旧电影可补导演")
     func migratesV5() throws {
         let directory = try directory()

@@ -44,6 +44,19 @@ enum LibraryTile: Identifiable {
     }
 }
 
+struct LibraryGridSection: Identifiable {
+    enum Kind: String {
+        case plain
+        case directorGroups = "导演合集"
+        case ungrouped = "未归入导演合集"
+    }
+
+    let id: Kind
+    let tiles: [LibraryTile]
+
+    var title: String? { id == .plain ? nil : id.rawValue }
+}
+
 struct LibraryGrouping {
     private struct Membership {
         let id: LibraryDestination
@@ -51,11 +64,13 @@ struct LibraryGrouping {
         let artworkPath: String?
     }
 
+    private let mode: LibraryDisplayMode
     private var groupsByRecord: [UUID: [LibraryDestination]] = [:]
     private var members: [LibraryDestination: [ViewingRecord]] = [:]
     private var metadata: [LibraryDestination: Membership] = [:]
 
     init(records: [ViewingRecord], mode: LibraryDisplayMode) {
+        self.mode = mode
         guard mode != .works else { return }
         for record in records {
             for group in Self.memberships(for: record, mode: mode) {
@@ -75,6 +90,23 @@ struct LibraryGrouping {
         let posters = libraryRecords.lazy.filter { $0.posterFilename != nil || $0.posterPath != nil }.prefix(4)
         return LibraryGroup(id: id, name: info.name, artworkPath: info.artworkPath, records: matching,
                             libraryCount: libraryRecords.count, posterSources: Array(posters))
+    }
+
+    func sections(matching: [ViewingRecord]) -> [LibraryGridSection] {
+        let tiles = tiles(matching: matching)
+        guard !tiles.isEmpty else { return [] }
+        guard mode == .directors else { return [LibraryGridSection(id: .plain, tiles: tiles)] }
+
+        var groups: [LibraryTile] = []
+        var singleWorks: [LibraryTile] = []
+        for tile in tiles {
+            switch tile {
+            case .group: groups.append(tile)
+            case .record: singleWorks.append(tile)
+            }
+        }
+        return [LibraryGridSection(id: .directorGroups, tiles: groups),
+                LibraryGridSection(id: .ungrouped, tiles: singleWorks)].filter { !$0.tiles.isEmpty }
     }
 
     func tiles(matching: [ViewingRecord]) -> [LibraryTile] {

@@ -267,7 +267,7 @@ struct LibraryView: View {
                 Button("清除搜索和筛选") { model.resetFilters() }
             }
         } else {
-            tileGrid(LibraryGrouping(records: records, mode: displayMode).tiles(matching: matching))
+            tileGrid(LibraryGrouping(records: records, mode: displayMode).sections(matching: matching))
         }
     }
 
@@ -276,35 +276,50 @@ struct LibraryView: View {
         let grouping = LibraryGrouping(records: records, mode: mode)
         let visible = model.matchingRecords(in: grouping.records(in: id), displayMode: mode)
         if let group = grouping.group(id, matching: visible) {
-            tileGrid(group.chronologicalRecords.map(LibraryTile.record))
+            tileGrid([LibraryGridSection(id: .plain, tiles: group.chronologicalRecords.map(LibraryTile.record))])
                 .navigationTitle(group.name)
         } else {
             ContentUnavailableView("没有符合条件的作品", systemImage: "film.stack")
         }
     }
 
-    private func tileGrid(_ tiles: [LibraryTile]) -> some View {
+    private func tileGrid(_ sections: [LibraryGridSection]) -> some View {
         ScrollView {
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
-                ForEach(tiles) { tile in
-                    switch tile {
-                    case .group(let group):
-                        NavigationLink(value: tile.id) { LibraryGroupCard(group: group) }
-                            .buttonStyle(.plain)
-                    case .record(let record):
-                        NavigationLink(value: tile.id) { RecordCard(record: record) }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                ForEach(WatchStatus.allCases) { status in
-                                    Button { changeStatus(status, record: record) } label: {
-                                        Label("标为\(status.title)", systemImage: status.systemImage)
-                                    }.disabled(record.watchStatus == status)
-                                }
-                            }
+            LazyVStack(alignment: .leading, spacing: 28) {
+                ForEach(sections) { section in
+                    VStack(alignment: .leading, spacing: 12) {
+                        if let title = section.title {
+                            Text(title)
+                                .font(.title3.weight(.semibold))
+                                .accessibilityAddTraits(.isHeader)
+                        }
+                        tileRows(section.tiles)
                     }
                 }
             }
             .padding(28)
+        }
+    }
+
+    private func tileRows(_ tiles: [LibraryTile]) -> some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
+            ForEach(tiles) { tile in
+                switch tile {
+                case .group(let group):
+                    NavigationLink(value: tile.id) { LibraryGroupCard(group: group) }
+                        .buttonStyle(.plain)
+                case .record(let record):
+                    NavigationLink(value: tile.id) { RecordCard(record: record) }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            ForEach(WatchStatus.allCases) { status in
+                                Button { changeStatus(status, record: record) } label: {
+                                    Label("标为\(status.title)", systemImage: status.systemImage)
+                                }.disabled(record.watchStatus == status)
+                            }
+                        }
+                }
+            }
         }
     }
 }
